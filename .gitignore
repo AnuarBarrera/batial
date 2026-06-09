@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Entornos
+venv/
+.env
+
+# Logs de runtime
+logs/
+*.log
