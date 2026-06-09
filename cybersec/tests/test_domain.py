@@ -27,6 +27,10 @@ def test_security_report_summary():
     assert s["High"] == 2
     assert s["Medium"] == 0
 
+def test_security_report_next_steps_default():
+    report = SecurityReport()
+    assert report.next_steps == []
+
 def test_llm_adapter_is_abstract():
     assert inspect.isabstract(LLMAdapter)
 

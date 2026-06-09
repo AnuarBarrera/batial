@@ -14,7 +14,17 @@ Directorio de código: {code}
 Ventana de tiempo: últimas {hours} horas
 
 Usa las herramientas disponibles para recopilar información real del sistema.
-Cuando tengas suficientes hallazgos, genera un diagnóstico con severidad y recomendaciones concretas."""
+Cuando tengas suficientes hallazgos, genera un diagnóstico con severidad y recomendaciones concretas.
+
+Tu respuesta final debe terminar con una sección llamada exactamente "PRÓXIMOS PASOS:"
+seguida de una lista numerada (1. 2. 3. ...) con las acciones más urgentes a tomar,
+ordenadas por prioridad."""
+
+_FINAL_REPORT_PROMPT = (
+    "Genera el reporte final con los hallazgos recopilados. Termina tu respuesta con una "
+    'sección llamada exactamente "PRÓXIMOS PASOS:" seguida de una lista numerada (1. 2. 3. ...) '
+    "con las acciones más urgentes a tomar, ordenadas por prioridad."
+)
 
 
 class SecurityAgent:
@@ -59,6 +69,6 @@ class SecurityAgent:
 
             messages.append(Message(role="tool", content="", tool_results=tool_results))
 
-        messages.append(Message(role="user", content="Genera el reporte final con los hallazgos recopilados."))
+        messages.append(Message(role="user", content=_FINAL_REPORT_PROMPT))
         final = self._adapter.chat(messages)
         return final.content or "(análisis incompleto)"

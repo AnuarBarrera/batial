@@ -26,6 +26,7 @@ class SecurityReport:
     scope: Optional[ScanScope] = None
     generated_at: Optional[datetime] = None
     analysis_text: str = ""
+    next_steps: list[str] = field(default_factory=list)
 
     def summary(self) -> dict:
         counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0}

@@ -51,3 +51,21 @@ def test_agent_handles_unknown_tool_gracefully():
     )
     result = SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost"))
     assert "completado" in result
+
+
+def test_initial_prompt_requests_next_steps_section():
+    adapter = _adapter(Message(role="assistant", content="Sistema seguro."))
+    SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost"))
+    sent_messages = adapter.chat.call_args[0][0]
+    assert "PRÓXIMOS PASOS:" in sent_messages[0].content
+
+
+def test_final_report_prompt_requests_next_steps_section():
+    loop_msg = Message(role="assistant", content="", tool_calls=[{"name": "scan_ports", "args": {"host": "localhost"}}])
+    final_msg = Message(role="assistant", content="Análisis parcial.")
+    adapter = _adapter(*([loop_msg] * 10 + [final_msg]))
+    tool = _tool("scan_ports", "22/tcp open")
+    agent = SecurityAgent(adapter=adapter, tool_registry={"scan_ports": tool}, max_iterations=3)
+    agent.run(ScanScope("localhost"))
+    last_messages = adapter.chat.call_args[0][0]
+    assert "PRÓXIMOS PASOS:" in last_messages[-1].content
