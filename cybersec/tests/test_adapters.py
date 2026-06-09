@@ -47,3 +47,34 @@ def test_gemini_chat_returns_tool_call(mock_genai):
     assert result.tool_calls is not None
     assert result.tool_calls[0]["name"] == "scan_ports"
     assert result.tool_calls[0]["args"] == {"host": "localhost"}
+
+
+from cybersec.infrastructure.adapters.openai_compat import OpenAICompatAdapter
+
+def test_openai_compat_implements_llm_adapter():
+    assert issubclass(OpenAICompatAdapter, LLMAdapter)
+
+@patch("cybersec.infrastructure.adapters.openai_compat.requests.post")
+def test_openai_compat_returns_text(mock_post):
+    mock_post.return_value = MagicMock(
+        json=lambda: {"choices": [{"message": {"role": "assistant", "content": "Hola", "tool_calls": None}}]},
+        raise_for_status=lambda: None,
+    )
+    adapter = OpenAICompatAdapter(base_url="http://localhost:8000", model="Qwen/14B")
+    result = adapter.chat([Message(role="user", content="Hola")])
+    assert result.content == "Hola"
+    assert result.tool_calls is None
+
+@patch("cybersec.infrastructure.adapters.openai_compat.requests.post")
+def test_openai_compat_returns_tool_call(mock_post):
+    mock_post.return_value = MagicMock(
+        json=lambda: {"choices": [{"message": {
+            "role": "assistant", "content": None,
+            "tool_calls": [{"function": {"name": "scan_ports", "arguments": '{"host": "localhost"}'}}]
+        }}]},
+        raise_for_status=lambda: None,
+    )
+    adapter = OpenAICompatAdapter(base_url="http://localhost:8000", model="Qwen/14B")
+    result = adapter.chat([Message(role="user", content="escanea")], tools=[])
+    assert result.tool_calls[0]["name"] == "scan_ports"
+    assert result.tool_calls[0]["args"] == {"host": "localhost"}
