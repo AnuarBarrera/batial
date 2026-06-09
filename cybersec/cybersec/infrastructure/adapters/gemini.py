@@ -13,10 +13,12 @@ _SYSTEM = (
 
 
 def _to_fn_declaration(spec: dict) -> types.FunctionDeclaration:
-    props = {
-        name: {"type": info.get("type", "string"), "description": info.get("description", "")}
-        for name, info in spec.get("parameters", {}).items()
-    }
+    props = {}
+    for name, info in spec.get("parameters", {}).items():
+        param: dict = {"type": info.get("type", "string"), "description": info.get("description", "")}
+        if param["type"] == "array":
+            param["items"] = {"type": info.get("items_type", "string")}
+        props[name] = param
     return types.FunctionDeclaration(
         name=spec["name"],
         description=spec["description"],
