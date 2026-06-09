@@ -1,0 +1,64 @@
+import logging
+from cybersec.domain.llm_adapter import LLMAdapter, Message
+from cybersec.domain.entities import ScanScope
+from cybersec.infrastructure.tools.registry import get_tool_schemas
+
+logger = logging.getLogger(__name__)
+
+_PROMPT = """Eres un agente de ciberseguridad. Analiza el sistema con este scope:
+
+Host: {host}
+Análisis solicitado: {types}
+Archivos de log: {logs}
+Directorio de código: {code}
+Ventana de tiempo: últimas {hours} horas
+
+Usa las herramientas disponibles para recopilar información real del sistema.
+Cuando tengas suficientes hallazgos, genera un diagnóstico con severidad y recomendaciones concretas."""
+
+
+class SecurityAgent:
+    def __init__(self, adapter: LLMAdapter, tool_registry: dict, max_iterations: int = 10):
+        self._adapter = adapter
+        self._registry = tool_registry
+        self._max_iterations = max_iterations
+
+    def run(self, scope: ScanScope) -> str:
+        initial = _PROMPT.format(
+            host=scope.target_host,
+            types=", ".join(scope.analysis_types) or "general",
+            logs=", ".join(scope.log_files) or "ninguno",
+            code=scope.code_directory or "ninguno",
+            hours=scope.time_range_hours,
+        )
+        messages: list[Message] = [Message(role="user", content=initial)]
+        tools = get_tool_schemas()
+
+        for _ in range(self._max_iterations):
+            response = self._adapter.chat(messages, tools=tools)
+
+            if not response.tool_calls:
+                return response.content or "(sin respuesta)"
+
+            messages.append(response)
+            tool_results = []
+
+            for tc in response.tool_calls:
+                name, args = tc["name"], tc.get("args", {})
+                tool = self._registry.get(name)
+                if tool is None:
+                    content = f"Herramienta '{name}' no disponible."
+                    logger.warning(content)
+                else:
+                    try:
+                        content = tool.execute(**args).content
+                    except Exception as e:
+                        content = f"Error en {name}: {e}"
+                        logger.error(content, exc_info=True)
+                tool_results.append({"name": name, "content": content})
+
+            messages.append(Message(role="tool", content="", tool_results=tool_results))
+
+        messages.append(Message(role="user", content="Genera el reporte final con los hallazgos recopilados."))
+        final = self._adapter.chat(messages)
+        return final.content or "(análisis incompleto)"
