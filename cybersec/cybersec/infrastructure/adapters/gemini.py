@@ -1,6 +1,8 @@
 import logging
+import random
+import time
 from google import genai
-from google.genai import types
+from google.genai import types, errors as genai_errors
 from cybersec.domain.llm_adapter import LLMAdapter, Message
 
 logger = logging.getLogger(__name__)
@@ -63,11 +65,23 @@ class GeminiAdapter(LLMAdapter):
         if tools:
             cfg_kwargs["tools"] = [types.Tool(function_declarations=[_to_fn_declaration(t) for t in tools])]
 
-        response = client.models.generate_content(
-            model=self._model,
-            contents=contents,
-            config=types.GenerateContentConfig(**cfg_kwargs),
-        )
+        config = types.GenerateContentConfig(**cfg_kwargs)
+        max_retries = 4
+        for attempt in range(max_retries):
+            try:
+                response = client.models.generate_content(
+                    model=self._model,
+                    contents=contents,
+                    config=config,
+                )
+                break
+            except genai_errors.ServerError as e:
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt + random.uniform(0, 1)
+                    logger.warning(f"Gemini 503, reintentando en {wait:.1f}s (intento {attempt + 1})")
+                    time.sleep(wait)
+                else:
+                    raise
 
         if response.function_calls:
             return Message(
