@@ -59,9 +59,19 @@ def _check_firewall() -> list[str]:
         if "inactive" in first_line.lower():
             return [f"⚠️  [High] UFW desactivado ({first_line})"]
         return [f"✅ UFW: {first_line}"]
-    code2, out2, _ = _run_cmd(["iptables", "-L", "-n"])
-    if code2 == 0:
-        if out2.splitlines() and "ACCEPT" in out2.splitlines()[0]:
+
+    # `ufw status` falló (normalmente por falta de sudo) — fallback con systemctl,
+    # que no requiere privilegios elevados.
+    _, out2, _ = _run_cmd(["systemctl", "is-active", "ufw"])
+    state = out2.strip().lower()
+    if state == "active":
+        return ["✅ UFW activo (verificado via systemctl; reglas no visibles sin sudo)"]
+    if state == "inactive":
+        return ["⚠️  [High] UFW inactivo (systemctl is-active ufw → inactive)"]
+
+    code3, out3, _ = _run_cmd(["iptables", "-L", "-n"])
+    if code3 == 0:
+        if out3.splitlines() and "ACCEPT" in out3.splitlines()[0]:
             return ["⚠️  [High] iptables: política por defecto ACCEPT"]
         return ["✅ iptables activo"]
     return ["ℹ️  Sin firewall detectado (ufw/iptables no disponibles)"]
