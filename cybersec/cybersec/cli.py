@@ -1,6 +1,7 @@
 import click
 from cybersec import config
 from cybersec.domain.entities import ScanScope
+from cybersec.infrastructure.preconditions import check_preconditions
 from cybersec.infrastructure.tools.registry import get_registry
 from cybersec.application.agent import SecurityAgent
 from cybersec.application.report import ReportGenerator, format_report_text
@@ -36,6 +37,12 @@ def cli():
               show_default=True, help="Adaptador LLM a usar")
 def scan(host, logs, code_dir, types, email, adapter):
     """Ejecuta un análisis de seguridad en el sistema."""
+    warnings = check_preconditions()
+    for warning in warnings:
+        click.echo(click.style(f"⚠️  {warning}", fg="yellow"))
+    if warnings:
+        click.echo()
+
     scope = ScanScope(
         target_host=host,
         log_files=list(logs),
