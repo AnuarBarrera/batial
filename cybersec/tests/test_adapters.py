@@ -26,6 +26,67 @@ def test_gemini_chat_returns_text(mock_genai):
     assert result.tool_calls is None
 
 @patch("cybersec.infrastructure.adapters.gemini.genai")
+def test_gemini_chat_uses_autonomous_system_instruction(mock_genai):
+    mock_client = MagicMock()
+    mock_genai.Client.return_value = mock_client
+    mock_resp = MagicMock()
+    mock_resp.text = "ok"
+    mock_resp.function_calls = []
+    mock_client.models.generate_content.return_value = mock_resp
+
+    GeminiAdapter(api_key="fake").chat([Message(role="user", content="analiza")])
+
+    config = mock_client.models.generate_content.call_args.kwargs["config"]
+    assert "confirmaci" in config.system_instruction.lower()
+
+
+@patch("cybersec.infrastructure.adapters.gemini.genai")
+def test_gemini_forces_function_call_on_first_message(mock_genai):
+    mock_client = MagicMock()
+    mock_genai.Client.return_value = mock_client
+
+    fc = MagicMock()
+    fc.name = "scan_ports"
+    fc.args = {"host": "localhost"}
+
+    mock_resp = MagicMock()
+    mock_resp.text = None
+    mock_resp.function_calls = [fc]
+    mock_client.models.generate_content.return_value = mock_resp
+
+    tools = [{"name": "scan_ports", "description": "Escanea puertos", "parameters": {
+        "host": {"type": "string", "description": "Host objetivo"}
+    }}]
+    GeminiAdapter(api_key="fake").chat([Message(role="user", content="analiza")], tools=tools)
+
+    config = mock_client.models.generate_content.call_args.kwargs["config"]
+    assert config.tool_config.function_calling_config.mode == "ANY"
+
+
+@patch("cybersec.infrastructure.adapters.gemini.genai")
+def test_gemini_does_not_force_function_call_on_later_messages(mock_genai):
+    mock_client = MagicMock()
+    mock_genai.Client.return_value = mock_client
+    mock_resp = MagicMock()
+    mock_resp.text = "Diagnóstico final."
+    mock_resp.function_calls = []
+    mock_client.models.generate_content.return_value = mock_resp
+
+    tools = [{"name": "scan_ports", "description": "Escanea puertos", "parameters": {
+        "host": {"type": "string", "description": "Host objetivo"}
+    }}]
+    messages = [
+        Message(role="user", content="analiza"),
+        Message(role="assistant", content="", tool_calls=[{"name": "scan_ports", "args": {"host": "localhost"}}]),
+        Message(role="tool", content="", tool_results=[{"name": "scan_ports", "content": "22/tcp open"}]),
+    ]
+    GeminiAdapter(api_key="fake").chat(messages, tools=tools)
+
+    config = mock_client.models.generate_content.call_args.kwargs["config"]
+    assert config.tool_config is None
+
+
+@patch("cybersec.infrastructure.adapters.gemini.genai")
 def test_gemini_chat_returns_tool_call(mock_genai):
     mock_client = MagicMock()
     mock_genai.Client.return_value = mock_client

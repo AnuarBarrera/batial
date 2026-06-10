@@ -8,9 +8,11 @@ from cybersec.domain.llm_adapter import LLMAdapter, Message
 logger = logging.getLogger(__name__)
 
 _SYSTEM = (
-    "Eres un agente experto en ciberseguridad. Usa las herramientas disponibles para "
-    "recopilar información del sistema y genera un diagnóstico con hallazgos, "
-    "severidad y recomendaciones concretas."
+    "Eres un agente experto en ciberseguridad ejecutándose de forma autónoma, sin "
+    "supervisión humana. Nadie puede responder preguntas ni dar confirmaciones: "
+    "actúa de inmediato usando las herramientas disponibles, sin describir planes "
+    "ni pedir permiso. Recopila información real del sistema y genera un "
+    "diagnóstico con hallazgos, severidad y recomendaciones concretas."
 )
 
 
@@ -64,6 +66,12 @@ class GeminiAdapter(LLMAdapter):
         cfg_kwargs = {"system_instruction": _SYSTEM}
         if tools:
             cfg_kwargs["tools"] = [types.Tool(function_declarations=[_to_fn_declaration(t) for t in tools])]
+            if len(messages) == 1:
+                # Forzar una llamada a herramienta en el primer turno: evita que el
+                # modelo responda con texto describiendo un plan y pidiendo confirmación.
+                cfg_kwargs["tool_config"] = types.ToolConfig(
+                    function_calling_config=types.FunctionCallingConfig(mode="ANY")
+                )
 
         config = types.GenerateContentConfig(**cfg_kwargs)
         max_retries = 4

@@ -78,6 +78,15 @@ def test_initial_prompt_requests_findings_json_section():
     assert "HALLAZGOS_JSON:" in sent_messages[0].content
 
 
+def test_initial_prompt_instructs_immediate_tool_use():
+    adapter = _adapter(Message(role="assistant", content="Sistema seguro."))
+    SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost"))
+    sent_messages = adapter.chat.call_args[0][0]
+    content = sent_messages[0].content.lower()
+    assert "no describas un plan" in content
+    assert "actúa de inmediato" in content
+
+
 def test_initial_prompt_mentions_list_code_files_tool():
     adapter = _adapter(Message(role="assistant", content="Sistema seguro."))
     SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost", code_directory="/tmp/proyecto"))

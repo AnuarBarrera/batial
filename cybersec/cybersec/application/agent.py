@@ -17,7 +17,12 @@ _OUTPUT_FORMAT_INSTRUCTIONS = (
     "(1. 2. 3. ...) con las acciones más urgentes a tomar, ordenadas por prioridad."
 )
 
-_PROMPT = """Eres un agente de ciberseguridad. Analiza el sistema con este scope:
+_PROMPT = """Eres un agente de ciberseguridad autónomo ejecutándose en un proceso
+automatizado: no hay ningún humano disponible para responder preguntas ni dar
+confirmaciones. No describas un plan ni pidas permiso — actúa de inmediato
+llamando a las herramientas disponibles.
+
+Analiza el sistema con este scope:
 
 Host: {host}
 Análisis solicitado: {types}
