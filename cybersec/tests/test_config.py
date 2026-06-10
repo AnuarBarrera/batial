@@ -15,3 +15,16 @@ def test_config_openai_default_empty():
         import cybersec.config as cfg
         reload(cfg)
         assert cfg.OPENAI_COMPAT_BASE_URL == ""
+
+def test_config_gemini_model_default():
+    clean = {k: v for k, v in os.environ.items() if k != "GEMINI_MODEL"}
+    with patch.dict(os.environ, clean, clear=True):
+        import cybersec.config as cfg
+        reload(cfg)
+        assert cfg.GEMINI_MODEL == "gemini-2.5-flash-lite"
+
+def test_config_gemini_model_override():
+    with patch.dict(os.environ, {"GEMINI_MODEL": "gemini-2.5-pro"}):
+        import cybersec.config as cfg
+        reload(cfg)
+        assert cfg.GEMINI_MODEL == "gemini-2.5-pro"

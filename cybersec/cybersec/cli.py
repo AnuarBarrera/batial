@@ -12,7 +12,7 @@ def _build_adapter(adapter_name: str):
         from cybersec.infrastructure.adapters.gemini import GeminiAdapter
         if not config.GEMINI_API_KEY:
             raise click.UsageError("GEMINI_API_KEY no configurada en .env")
-        return GeminiAdapter(api_key=config.GEMINI_API_KEY)
+        return GeminiAdapter(api_key=config.GEMINI_API_KEY, model=config.GEMINI_MODEL)
     else:
         from cybersec.infrastructure.adapters.openai_compat import OpenAICompatAdapter
         if not config.OPENAI_COMPAT_BASE_URL:
