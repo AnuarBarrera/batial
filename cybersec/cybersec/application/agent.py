@@ -5,6 +5,18 @@ from cybersec.infrastructure.tools.registry import get_tool_schemas
 
 logger = logging.getLogger(__name__)
 
+_OUTPUT_FORMAT_INSTRUCTIONS = (
+    "Tu respuesta final debe incluir, en este orden:\n"
+    "1. Un análisis narrativo con resumen ejecutivo, hallazgos y recomendaciones.\n"
+    '2. Una sección llamada exactamente "HALLAZGOS_JSON:" seguida de un bloque de código '
+    '```json con un array de objetos, cada uno con las claves "title" (string), '
+    '"severity" (uno de "Critical", "High", "Medium", "Low" en inglés; usa "Low" para '
+    'hallazgos informativos), "evidence" (string breve) y "recommendation" (string). '
+    "Incluye solo problemas de seguridad reales, no estados positivos.\n"
+    '3. Una sección llamada exactamente "PRÓXIMOS PASOS:" seguida de una lista numerada '
+    "(1. 2. 3. ...) con las acciones más urgentes a tomar, ordenadas por prioridad."
+)
+
 _PROMPT = """Eres un agente de ciberseguridad. Analiza el sistema con este scope:
 
 Host: {host}
@@ -16,15 +28,9 @@ Ventana de tiempo: últimas {hours} horas
 Usa las herramientas disponibles para recopilar información real del sistema.
 Cuando tengas suficientes hallazgos, genera un diagnóstico con severidad y recomendaciones concretas.
 
-Tu respuesta final debe terminar con una sección llamada exactamente "PRÓXIMOS PASOS:"
-seguida de una lista numerada (1. 2. 3. ...) con las acciones más urgentes a tomar,
-ordenadas por prioridad."""
+""" + _OUTPUT_FORMAT_INSTRUCTIONS
 
-_FINAL_REPORT_PROMPT = (
-    "Genera el reporte final con los hallazgos recopilados. Termina tu respuesta con una "
-    'sección llamada exactamente "PRÓXIMOS PASOS:" seguida de una lista numerada (1. 2. 3. ...) '
-    "con las acciones más urgentes a tomar, ordenadas por prioridad."
-)
+_FINAL_REPORT_PROMPT = "Genera el reporte final con los hallazgos recopilados. " + _OUTPUT_FORMAT_INSTRUCTIONS
 
 
 class SecurityAgent:

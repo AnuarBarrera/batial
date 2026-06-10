@@ -1,11 +1,21 @@
+import json
 import re
 from datetime import datetime
-from cybersec.domain.entities import ScanScope, SecurityReport
+from cybersec.domain.entities import Finding, ScanScope, SecurityReport
 
 SEVERITY_ORDER = ["Critical", "High", "Medium", "Low"]
 
 _NEXT_STEPS_HEADER_RE = re.compile(r"^[#>\s*]*pr[oó]ximos\s+pasos[:\s]*$", re.IGNORECASE | re.MULTILINE)
 _LIST_ITEM_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+(.+)$")
+_FINDINGS_HEADER_RE = re.compile(r"^[#>\s*]*hallazgos_json[:\s]*$", re.IGNORECASE | re.MULTILINE)
+_JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL | re.IGNORECASE)
+
+_SEVERITY_ALIASES = {
+    "critical": "Critical", "crítica": "Critical", "critica": "Critical",
+    "high": "High", "alta": "High",
+    "medium": "Medium", "media": "Medium",
+    "low": "Low", "baja": "Low", "informativo": "Low", "informational": "Low", "info": "Low",
+}
 
 
 def _extract_next_steps(text: str) -> tuple[str, list[str]]:
@@ -21,6 +31,45 @@ def _extract_next_steps(text: str) -> tuple[str, list[str]]:
     section = text[match.end():]
     steps = [m.group(1).strip() for line in section.splitlines() if (m := _LIST_ITEM_RE.match(line))]
     return main_text, steps
+
+
+def _normalize_severity(severity: str) -> str:
+    return _SEVERITY_ALIASES.get(severity.strip().lower(), severity if severity in SEVERITY_ORDER else "Low")
+
+
+def _extract_findings(text: str) -> tuple[str, list[Finding]]:
+    """Separa una sección "HALLAZGOS_JSON:" con un bloque ```json del texto del agente.
+
+    Devuelve el texto restante (sin esa sección) y los Finding parseados.
+    """
+    match = _FINDINGS_HEADER_RE.search(text)
+    if not match:
+        return text, []
+    json_match = _JSON_BLOCK_RE.search(text[match.end():])
+    if not json_match:
+        return text, []
+    try:
+        data = json.loads(json_match.group(1))
+    except json.JSONDecodeError:
+        return text, []
+    if isinstance(data, dict):
+        data = data.get("findings", [])
+    if not isinstance(data, list):
+        return text, []
+
+    main_text = text[:match.start()].rstrip()
+    findings = [
+        Finding(
+            id=f"F{i:03d}",
+            title=item.get("title", ""),
+            severity=_normalize_severity(str(item.get("severity", "Low"))),
+            evidence=item.get("evidence", ""),
+            recommendation=item.get("recommendation", ""),
+        )
+        for i, item in enumerate(data, 1)
+        if isinstance(item, dict)
+    ]
+    return main_text, findings
 
 
 def format_report_text(report: SecurityReport) -> str:
@@ -53,17 +102,18 @@ def format_report_text(report: SecurityReport) -> str:
                 f"  Recomendación: {f.recommendation}",
                 "",
             ]
-    elif report.analysis_text:
+
+    if report.analysis_text:
         lines += ["ANÁLISIS DEL AGENTE", "-" * 40, report.analysis_text, ""]
 
     urgent = [f for f in sorted_findings if f.severity in ("Critical", "High")]
     lines += ["PRÓXIMOS PASOS", "-" * 40]
-    if urgent:
-        for i, f in enumerate(urgent, 1):
-            lines.append(f"  {i}. [{f.severity}] {f.recommendation}")
-    elif report.next_steps:
+    if report.next_steps:
         for i, step in enumerate(report.next_steps, 1):
             lines.append(f"  {i}. {step}")
+    elif urgent:
+        for i, f in enumerate(urgent, 1):
+            lines.append(f"  {i}. [{f.severity}] {f.recommendation}")
     else:
         lines.append("  Sin hallazgos críticos o altos que requieran acción inmediata.")
 
@@ -74,8 +124,9 @@ def format_report_text(report: SecurityReport) -> str:
 class ReportGenerator:
     def from_agent_output(self, agent_text: str, scope: ScanScope) -> SecurityReport:
         main_text, next_steps = _extract_next_steps(agent_text)
+        main_text, findings = _extract_findings(main_text)
         return SecurityReport(
-            findings=[],
+            findings=findings,
             scope=scope,
             generated_at=datetime.now(),
             analysis_text=main_text,
