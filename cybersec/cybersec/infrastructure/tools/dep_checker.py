@@ -24,7 +24,8 @@ def _check_pip() -> str:
         data = json.loads(out)
     except json.JSONDecodeError:
         return "⚠️  No se pudo parsear salida de pip-audit."
-    vulns = [p for p in data if p.get("vulns")]
+    dependencies = data.get("dependencies", [])
+    vulns = [p for p in dependencies if p.get("vulns")]
     if not vulns:
         return "✅ pip: Sin vulnerabilidades conocidas."
     lines = ["pip — vulnerabilidades encontradas:"]
