@@ -36,9 +36,9 @@ cybersec/
 │   ├── application/          # Loop agentico (SecurityAgent) y generador de reportes
 │   └── infrastructure/
 │       ├── adapters/         # GeminiAdapter + OpenAICompatAdapter
-│       ├── tools/            # Las 5 herramientas de análisis
+│       ├── tools/            # Las 6 herramientas de análisis
 │       └── notifiers/        # MailgunNotifier (email)
-├── tests/                    # 51 tests con pytest
+├── tests/                    # 90 tests con pytest
 ├── .env.example
 ├── requirements.txt
 └── pytest.ini
@@ -76,6 +76,7 @@ Copia `.env.example` a `.env` y completa los valores:
 ```env
 # LLM — Gemini (créditos del hackathon)
 GEMINI_API_KEY=tu_api_key
+GEMINI_MODEL=gemini-2.5-flash-lite  # mayor cuota free-tier que gemini-2.5-flash
 
 # LLM — OpenAI-compatible (vLLM propio, Ollama, Groq, Together…)
 OPENAI_COMPAT_BASE_URL=http://tu-servidor:8000
@@ -154,7 +155,7 @@ source venv/bin/activate
 pytest -v
 ```
 
-51 tests cubriendo domain, tools, adapters, agent loop y reporte.
+90 tests cubriendo domain, tools, adapters, agent loop y reporte.
 
 ---
 
@@ -162,7 +163,7 @@ pytest -v
 
 ### Gemini (default)
 
-Usa la API de Google Gemini con function calling nativo. Requiere `GEMINI_API_KEY`. Modelo por defecto: `gemini-2.5-flash`.
+Usa la API de Google Gemini con function calling nativo. Requiere `GEMINI_API_KEY`. Modelo por defecto: `gemini-2.5-flash-lite` (configurable con `GEMINI_MODEL`).
 
 ### OpenAI-compatible
 
@@ -176,14 +177,20 @@ Apunta a cualquier servidor con endpoint `/v1/chat/completions`: vLLM propio en 
 
 | Fase | Estado | Descripción |
 |---|---|---|
-| **Fase 1 — Diagnóstico** | ✅ MVP completo | CLI que analiza y reporta |
+| **Fase 1 — Diagnóstico** | ✅ Completa y validada en producción | CLI que analiza y reporta |
 | **Fase 2 — Remediación** | Planeada | El agente propone y aplica parches con confirmación del usuario |
 | **Fase 3 — Monitoreo** | Planeada | Daemon 24/7 que detecta ataques en tiempo real y envía alertas |
 
 ---
 
-## Bugs conocidos (post primera ejecución)
+## Estado actual
 
-- **UFW falso negativo:** `check_configs` reporta "sin firewall" si `ufw status` requiere sudo. Fix: usar `systemctl is-active ufw` como fallback.
-- **PRÓXIMOS PASOS vacíos:** la sección solo lee hallazgos estructurados; el MVP usa texto libre del agente. Fix en Fase 2.
-- **Precondiciones silenciosas:** si `nmap` o `pip-audit` no están instalados, el agente lo reporta como hallazgo en lugar de advertir al inicio.
+Fase 1 (MVP) completa y validada end-to-end con una corrida real de producción:
+RESUMEN EJECUTIVO con conteo correcto de hallazgos, HALLAZGOS estructurados
+ordenados por severidad (parseados desde `HALLAZGOS_JSON`), análisis del agente
+sobre código fuente real (`list_code_files` + `read_code_snippet`) y PRÓXIMOS
+PASOS poblados con acciones priorizadas. 90/90 tests pasando.
+
+Próximos pasos: pruebas adicionales contra otros repos y servidores para
+evaluar cobertura de hallazgos, y luego Fase 2 (remediación asistida) sobre
+un proyecto sin riesgo.
