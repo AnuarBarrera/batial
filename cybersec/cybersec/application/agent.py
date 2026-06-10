@@ -26,6 +26,10 @@ Directorio de código: {code}
 Ventana de tiempo: últimas {hours} horas
 
 Usa las herramientas disponibles para recopilar información real del sistema.
+Si se especifica un directorio de código (distinto de "ninguno"), usa primero
+list_code_files para descubrir los archivos disponibles y luego read_code_snippet
+para revisar los más relevantes desde el punto de vista de seguridad
+(configuración, autenticación, manejo de inputs, credenciales).
 Cuando tengas suficientes hallazgos, genera un diagnóstico con severidad y recomendaciones concretas.
 
 """ + _OUTPUT_FORMAT_INSTRUCTIONS

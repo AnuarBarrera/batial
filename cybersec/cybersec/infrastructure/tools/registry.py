@@ -1,7 +1,7 @@
 from .log_analyzer import LogAnalyzerTool
 from .port_scanner import PortScannerTool
 from .dep_checker import DependencyCheckerTool
-from .code_reader import CodeReaderTool
+from .code_reader import CodeReaderTool, ListCodeFilesTool
 from .config_checker import ConfigCheckerTool
 
 TOOL_SCHEMAS = [
@@ -24,6 +24,14 @@ TOOL_SCHEMAS = [
         "description": "Verifica paquetes pip/npm instalados contra CVEs conocidos usando pip-audit y npm audit.",
         "parameters": {
             "package_managers": {"type": "array", "description": "Lista de gestores a revisar: ['pip', 'npm']"},
+        },
+    },
+    {
+        "name": "list_code_files",
+        "description": "Lista archivos de código fuente dentro de un directorio (recursivo, excluye .git/node_modules/venv/etc.). "
+                        "Úsalo primero para descubrir qué archivos existen antes de leerlos con read_code_snippet.",
+        "parameters": {
+            "directory": {"type": "string", "description": "Ruta absoluta al directorio de código a listar", "required": True},
         },
     },
     {
@@ -53,6 +61,7 @@ def get_registry() -> dict:
             "scan_ports": PortScannerTool(),
             "check_dependencies": DependencyCheckerTool(),
             "read_code_snippet": CodeReaderTool(),
+            "list_code_files": ListCodeFilesTool(),
             "check_configs": ConfigCheckerTool(),
         }
     return _REGISTRY

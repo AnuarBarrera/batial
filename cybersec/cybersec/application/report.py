@@ -5,9 +5,9 @@ from cybersec.domain.entities import Finding, ScanScope, SecurityReport
 
 SEVERITY_ORDER = ["Critical", "High", "Medium", "Low"]
 
-_NEXT_STEPS_HEADER_RE = re.compile(r"^[#>\s*]*pr[oó]ximos\s+pasos[:\s]*$", re.IGNORECASE | re.MULTILINE)
+_NEXT_STEPS_HEADER_RE = re.compile(r"^[#>\s*]*pr[oó]ximos\s+pasos[:\s*]*$", re.IGNORECASE | re.MULTILINE)
 _LIST_ITEM_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+(.+)$")
-_FINDINGS_HEADER_RE = re.compile(r"^[#>\s*]*hallazgos_json[:\s]*$", re.IGNORECASE | re.MULTILINE)
+_FINDINGS_HEADER_RE = re.compile(r"^[#>\s*]*hallazgos_json[:\s*]*$", re.IGNORECASE | re.MULTILINE)
 _JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL | re.IGNORECASE)
 
 _SEVERITY_ALIASES = {

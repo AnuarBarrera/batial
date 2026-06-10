@@ -2,7 +2,7 @@
 from cybersec.infrastructure.tools.registry import get_registry, get_tool, get_tool_schemas
 from cybersec.domain.tools import BaseTool
 
-EXPECTED_TOOLS = {"analyze_logs", "scan_ports", "check_dependencies", "read_code_snippet", "check_configs"}
+EXPECTED_TOOLS = {"analyze_logs", "scan_ports", "check_dependencies", "read_code_snippet", "list_code_files", "check_configs"}
 
 def test_registry_has_all_tools():
     assert set(get_registry().keys()) == EXPECTED_TOOLS

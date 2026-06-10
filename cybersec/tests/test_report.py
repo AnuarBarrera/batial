@@ -169,6 +169,32 @@ def test_report_shows_both_analysis_and_structured_findings():
     assert "F001" in text
 
 
+def test_extract_next_steps_handles_markdown_bold_header():
+    text = (
+        "Resumen.\n\n"
+        "**PRÓXIMOS PASOS:**\n"
+        "1. Hacer X\n"
+        "2. Hacer Y\n"
+    )
+    main, steps = _extract_next_steps(text)
+    assert "PRÓXIMOS PASOS" not in main
+    assert steps == ["Hacer X", "Hacer Y"]
+
+
+def test_extract_findings_handles_markdown_bold_header():
+    text = (
+        "Análisis.\n\n"
+        "**HALLAZGOS_JSON:**\n"
+        "```json\n"
+        '[{"title": "X", "severity": "High", "evidence": "e", "recommendation": "r"}]\n'
+        "```\n"
+    )
+    main, findings = _extract_findings(text)
+    assert "HALLAZGOS_JSON" not in main
+    assert len(findings) == 1
+    assert findings[0].title == "X"
+
+
 def test_report_proximos_pasos_prefers_next_steps_over_findings():
     scope = ScanScope(target_host="localhost")
     report = SecurityReport(
