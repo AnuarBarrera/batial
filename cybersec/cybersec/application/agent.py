@@ -32,10 +32,18 @@ Ventana de tiempo: últimas {hours} horas
 
 Usa las herramientas disponibles para recopilar información real del sistema.
 Si se especifica un directorio de código (distinto de "ninguno"), usa primero
-list_code_files para descubrir los archivos disponibles y luego read_code_snippet
-para revisar los más relevantes desde el punto de vista de seguridad
-(configuración, autenticación, manejo de inputs, credenciales).
-Cuando tengas suficientes hallazgos, genera un diagnóstico con severidad y recomendaciones concretas.
+list_code_files para descubrir los archivos disponibles. De esa lista, usa
+read_code_snippet para leer SIEMPRE, sin excepción y aunque ya creas tener
+suficientes hallazgos, cualquier archivo cuyo nombre coincida con estos
+patrones (son los puntos críticos de seguridad de cualquier proyecto):
+  - *settings*, *config* (configuración de la app)
+  - *auth*, *login*, *password*, *credential* (autenticación y credenciales)
+  - docker-compose*, Dockerfile*, *.env*, .env.example (infraestructura y secretos)
+  - *middleware* (seguridad de requests: CSP, rate limiting, headers)
+Además, revisa cualquier otro archivo que consideres relevante desde el punto
+de vista de seguridad (manejo de inputs, sesiones, permisos).
+Cuando hayas revisado los archivos obligatorios que existan en el directorio
+y tengas suficientes hallazgos, genera un diagnóstico con severidad y recomendaciones concretas.
 
 """ + _OUTPUT_FORMAT_INSTRUCTIONS
 

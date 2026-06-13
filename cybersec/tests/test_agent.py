@@ -94,6 +94,15 @@ def test_initial_prompt_mentions_list_code_files_tool():
     assert "list_code_files" in sent_messages[0].content
 
 
+def test_initial_prompt_lists_mandatory_security_file_patterns():
+    adapter = _adapter(Message(role="assistant", content="Sistema seguro."))
+    SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost", code_directory="/tmp/proyecto"))
+    sent_messages = adapter.chat.call_args[0][0]
+    content = sent_messages[0].content.lower()
+    for pattern in ["settings", "auth", "docker-compose", "middleware", ".env"]:
+        assert pattern in content, f"falta el patrón obligatorio '{pattern}' en el prompt"
+
+
 def test_final_report_prompt_requests_findings_json_section():
     loop_msg = Message(role="assistant", content="", tool_calls=[{"name": "scan_ports", "args": {"host": "localhost"}}])
     final_msg = Message(role="assistant", content="Análisis parcial.")
