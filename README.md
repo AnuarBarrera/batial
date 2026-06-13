@@ -24,6 +24,7 @@ Usuario define scope → LLM decide tools → Tools corren en local → LLM gene
 | `list_code_files` | Lista archivos de código en un directorio (recursivo, excluye .git/node_modules/venv/etc.) |
 | `read_code_snippet` | Lee archivos de código fuente (.py, .js, .ts, .go, .sh, .env, .yaml…) para análisis estático |
 | `check_configs` | Revisa sshd_config, permisos de /etc/passwd y /etc/shadow, estado del firewall (ufw/iptables) |
+| `scan_code_security` | Análisis estático determinista con `bandit` — secretos hardcodeados, funciones peligrosas (eval/exec, shell=True), criptografía débil, SQL injection, etc. |
 
 ---
 
@@ -36,9 +37,9 @@ cybersec/
 │   ├── application/          # Loop agentico (SecurityAgent) y generador de reportes
 │   └── infrastructure/
 │       ├── adapters/         # GeminiAdapter + OpenAICompatAdapter
-│       ├── tools/            # Las 6 herramientas de análisis
+│       ├── tools/            # Las 7 herramientas de análisis
 │       └── notifiers/        # MailgunNotifier (email)
-├── tests/                    # 90 tests con pytest
+├── tests/                    # 100 tests con pytest
 ├── .env.example
 ├── requirements.txt
 └── pytest.ini
@@ -53,6 +54,7 @@ cybersec/
 - Python 3.10+
 - `nmap` instalado en el sistema (`sudo apt install nmap`)
 - `pip-audit` para análisis de dependencias Python (`pip install pip-audit`)
+- `bandit` para análisis estático de código Python (`pip install bandit`, incluido en `requirements.txt`)
 
 ---
 
@@ -155,7 +157,7 @@ source venv/bin/activate
 pytest -v
 ```
 
-90 tests cubriendo domain, tools, adapters, agent loop y reporte.
+100 tests cubriendo domain, tools, adapters, agent loop y reporte.
 
 ---
 
@@ -188,8 +190,9 @@ Apunta a cualquier servidor con endpoint `/v1/chat/completions`: vLLM propio en 
 Fase 1 (MVP) completa y validada end-to-end con una corrida real de producción:
 RESUMEN EJECUTIVO con conteo correcto de hallazgos, HALLAZGOS estructurados
 ordenados por severidad (parseados desde `HALLAZGOS_JSON`), análisis del agente
-sobre código fuente real (`list_code_files` + `read_code_snippet`) y PRÓXIMOS
-PASOS poblados con acciones priorizadas. 90/90 tests pasando.
+sobre código fuente real (`list_code_files` + `read_code_snippet` + análisis
+estático determinista con `scan_code_security`/bandit) y PRÓXIMOS PASOS
+poblados con acciones priorizadas. 100/100 tests pasando.
 
 Próximos pasos: pruebas adicionales contra otros repos y servidores para
 evaluar cobertura de hallazgos, y luego Fase 2 (remediación asistida) sobre

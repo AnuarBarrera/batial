@@ -31,19 +31,24 @@ Directorio de código: {code}
 Ventana de tiempo: últimas {hours} horas
 
 Usa las herramientas disponibles para recopilar información real del sistema.
-Si se especifica un directorio de código (distinto de "ninguno"), usa primero
-list_code_files para descubrir los archivos disponibles. De esa lista, usa
-read_code_snippet para leer SIEMPRE, sin excepción y aunque ya creas tener
-suficientes hallazgos, cualquier archivo cuyo nombre coincida con estos
-patrones (son los puntos críticos de seguridad de cualquier proyecto):
-  - *settings*, *config* (configuración de la app)
-  - *auth*, *login*, *password*, *credential* (autenticación y credenciales)
-  - docker-compose*, Dockerfile*, *.env*, .env.example (infraestructura y secretos)
-  - *middleware* (seguridad de requests: CSP, rate limiting, headers)
-Además, revisa cualquier otro archivo que consideres relevante desde el punto
-de vista de seguridad (manejo de inputs, sesiones, permisos).
-Cuando hayas revisado los archivos obligatorios que existan en el directorio
-y tengas suficientes hallazgos, genera un diagnóstico con severidad y recomendaciones concretas.
+Si se especifica un directorio de código (distinto de "ninguno"):
+1. Ejecuta SIEMPRE scan_code_security sobre ese directorio — es un análisis
+   estático determinista (bandit) que detecta secretos hardcodeados, funciones
+   peligrosas, criptografía débil y otros patrones inseguros. Incluye sus
+   hallazgos en HALLAZGOS_JSON (ajusta la severidad si corresponde).
+2. Usa list_code_files para descubrir los archivos disponibles. De esa lista,
+   usa read_code_snippet para leer SIEMPRE, sin excepción y aunque ya creas
+   tener suficientes hallazgos, cualquier archivo cuyo nombre coincida con
+   estos patrones (son los puntos críticos de seguridad de cualquier proyecto):
+     - *settings*, *config* (configuración de la app)
+     - *auth*, *login*, *password*, *credential* (autenticación y credenciales)
+     - docker-compose*, Dockerfile*, *.env*, .env.example (infraestructura y secretos)
+     - *middleware* (seguridad de requests: CSP, rate limiting, headers)
+   Además, revisa cualquier otro archivo que consideres relevante desde el
+   punto de vista de seguridad (manejo de inputs, sesiones, permisos).
+Cuando hayas ejecutado scan_code_security, revisado los archivos obligatorios
+que existan en el directorio, y tengas suficientes hallazgos, genera un
+diagnóstico con severidad y recomendaciones concretas.
 
 """ + _OUTPUT_FORMAT_INSTRUCTIONS
 

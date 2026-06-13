@@ -3,6 +3,7 @@ from .port_scanner import PortScannerTool
 from .dep_checker import DependencyCheckerTool
 from .code_reader import CodeReaderTool, ListCodeFilesTool
 from .config_checker import ConfigCheckerTool
+from .static_analyzer import StaticAnalyzerTool
 
 TOOL_SCHEMAS = [
     {
@@ -48,6 +49,15 @@ TOOL_SCHEMAS = [
             "ssh_config_path": {"type": "string", "description": "Ruta al sshd_config (default: /etc/ssh/sshd_config)"},
         },
     },
+    {
+        "name": "scan_code_security",
+        "description": "Análisis estático de seguridad con bandit sobre un directorio de código: detecta de forma "
+                        "determinista secretos hardcodeados, funciones peligrosas (eval/exec, shell=True), "
+                        "criptografía débil, SQL injection y otros patrones inseguros, con severidad por hallazgo.",
+        "parameters": {
+            "directory": {"type": "string", "description": "Ruta absoluta al directorio de código a analizar", "required": True},
+        },
+    },
 ]
 
 _REGISTRY = None
@@ -63,6 +73,7 @@ def get_registry() -> dict:
             "read_code_snippet": CodeReaderTool(),
             "list_code_files": ListCodeFilesTool(),
             "check_configs": ConfigCheckerTool(),
+            "scan_code_security": StaticAnalyzerTool(),
         }
     return _REGISTRY
 

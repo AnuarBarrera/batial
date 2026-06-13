@@ -4,6 +4,8 @@ _TOOLS = {
     "nmap": "el análisis de puertos (scan_ports) no funcionará. Instala con: sudo apt install nmap",
     "pip-audit": "el análisis de dependencias Python (check_dependencies) no funcionará. "
                   "Instala con: pip install pip-audit",
+    "bandit": "el análisis estático de código (scan_code_security) no funcionará. "
+              "Instala con: pip install bandit",
 }
 
 

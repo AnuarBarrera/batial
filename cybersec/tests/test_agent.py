@@ -94,6 +94,13 @@ def test_initial_prompt_mentions_list_code_files_tool():
     assert "list_code_files" in sent_messages[0].content
 
 
+def test_initial_prompt_mentions_scan_code_security_tool():
+    adapter = _adapter(Message(role="assistant", content="Sistema seguro."))
+    SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost", code_directory="/tmp/proyecto"))
+    sent_messages = adapter.chat.call_args[0][0]
+    assert "scan_code_security" in sent_messages[0].content
+
+
 def test_initial_prompt_lists_mandatory_security_file_patterns():
     adapter = _adapter(Message(role="assistant", content="Sistema seguro."))
     SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost", code_directory="/tmp/proyecto"))
