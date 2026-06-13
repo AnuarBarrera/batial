@@ -39,7 +39,7 @@ cybersec/
 │       ├── adapters/         # GeminiAdapter + OpenAICompatAdapter
 │       ├── tools/            # Las 7 herramientas de análisis
 │       └── notifiers/        # MailgunNotifier (email)
-├── tests/                    # 107 tests con pytest
+├── tests/                    # 110 tests con pytest
 ├── .env.example
 ├── requirements.txt
 └── pytest.ini
@@ -114,6 +114,11 @@ python3 -m cybersec scan \
 python3 -m cybersec scan --adapter openai --host 10.0.0.5
 ```
 
+Durante la ejecución se muestra una barra de progreso que avanza con cada paso
+del agente y el nombre de la acción en curso (ej. "Ejecutando
+scan_code_security...", "Analizando (paso 2/10)...", "Auditando el
+reporte..."), hasta completarse al 100% al finalizar.
+
 ### Opciones del comando `scan`
 
 | Opción | Default | Descripción |
@@ -158,7 +163,7 @@ source venv/bin/activate
 pytest -v
 ```
 
-107 tests cubriendo domain, tools, adapters, agent loop y reporte.
+110 tests cubriendo domain, tools, adapters, agent loop y reporte.
 
 ---
 
@@ -197,7 +202,7 @@ sobre código fuente real (`list_code_files` + `read_code_snippet` + análisis
 estático determinista con `scan_code_security`/bandit), un paso de auditoría
 con un modelo más capaz (`GEMINI_AUDIT_MODEL`) que revisa el reporte contra la
 evidencia recopilada, y PRÓXIMOS PASOS poblados con acciones priorizadas.
-107/107 tests pasando.
+110/110 tests pasando.
 
 Próximos pasos: pruebas adicionales contra otros repos y servidores para
 evaluar cobertura de hallazgos (con el nuevo paso de auditoría activo), y luego

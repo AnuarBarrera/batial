@@ -62,9 +62,13 @@ def scan(host, logs, code_dir, types, email, adapter):
     registry = get_registry()
     agent = SecurityAgent(adapter=llm, tool_registry=registry, audit_adapter=audit_llm)
 
-    with click.progressbar(length=1, label="Analizando sistema", show_eta=False) as bar:
-        analysis_text = agent.run(scope)
-        bar.update(1)
+    # Estimación de pasos: hasta max_iterations del loop + 1 paso de auditoría final.
+    # Si el agente termina antes, la barra se completa al 100% al finalizar.
+    total_steps = 11
+    with click.progressbar(length=total_steps, label="Analizando sistema",
+                            item_show_func=lambda step: step or "", show_eta=False) as bar:
+        analysis_text = agent.run(scope, on_progress=lambda step: bar.update(1, current_item=step))
+        bar.update(max(0, bar.length - bar.pos), current_item="Completado")
 
     report = ReportGenerator().from_agent_output(agent_text=analysis_text, scope=scope)
     report_text = format_report_text(report)

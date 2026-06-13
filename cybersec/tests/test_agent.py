@@ -175,3 +175,36 @@ def test_agent_uses_audit_adapter_when_provided():
     main_adapter.chat.assert_called_once()
     audit_adapter.chat.assert_called_once()
     assert result == "Reporte auditado por modelo fuerte."
+
+
+def test_agent_reports_progress_for_each_iteration():
+    adapter = _adapter(
+        Message(role="assistant", content="Reporte inicial."),
+        Message(role="assistant", content="Reporte auditado."),
+    )
+    progress = []
+    SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost"), on_progress=progress.append)
+    assert any("Analizando" in m for m in progress)
+
+
+def test_agent_reports_progress_with_tool_name_when_executing_tool():
+    adapter = _adapter(
+        Message(role="assistant", content="", tool_calls=[{"name": "check_configs", "args": {}}]),
+        Message(role="assistant", content="Listo."),
+        Message(role="assistant", content="Auditado."),
+    )
+    tool = _tool("check_configs", "PermitRootLogin yes")
+    agent = SecurityAgent(adapter=adapter, tool_registry={"check_configs": tool})
+    progress = []
+    agent.run(ScanScope("localhost"), on_progress=progress.append)
+    assert any("check_configs" in m for m in progress)
+
+
+def test_agent_reports_progress_before_audit_pass():
+    adapter = _adapter(
+        Message(role="assistant", content="Reporte inicial."),
+        Message(role="assistant", content="Reporte auditado."),
+    )
+    progress = []
+    SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost"), on_progress=progress.append)
+    assert any("audit" in m.lower() for m in progress)

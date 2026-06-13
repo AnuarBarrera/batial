@@ -1,4 +1,5 @@
 import logging
+from typing import Callable, Optional
 from cybersec.domain.llm_adapter import LLMAdapter, Message
 from cybersec.domain.entities import ScanScope
 from cybersec.infrastructure.tools.registry import get_tool_schemas
@@ -92,7 +93,11 @@ class SecurityAgent:
         self._max_iterations = max_iterations
         self._audit_adapter = audit_adapter
 
-    def run(self, scope: ScanScope) -> str:
+    def run(self, scope: ScanScope, on_progress: Optional[Callable[[str], None]] = None) -> str:
+        def notify(message: str) -> None:
+            if on_progress:
+                on_progress(message)
+
         initial = _PROMPT.format(
             host=scope.target_host,
             types=", ".join(scope.analysis_types) or "general",
@@ -103,18 +108,20 @@ class SecurityAgent:
         messages: list[Message] = [Message(role="user", content=initial)]
         tools = get_tool_schemas()
 
-        for _ in range(self._max_iterations):
+        for i in range(self._max_iterations):
+            notify(f"Analizando (paso {i + 1}/{self._max_iterations})...")
             response = self._adapter.chat(messages, tools=tools)
 
             if not response.tool_calls:
                 report = response.content or "(sin respuesta)"
-                return self._audit(messages, response, report)
+                return self._audit(messages, response, report, notify)
 
             messages.append(response)
             tool_results = []
 
             for tc in response.tool_calls:
                 name, args = tc["name"], tc.get("args", {})
+                notify(f"Ejecutando {name}...")
                 tool = self._registry.get(name)
                 if tool is None:
                     content = f"Herramienta '{name}' no disponible."
@@ -129,12 +136,15 @@ class SecurityAgent:
 
             messages.append(Message(role="tool", content="", tool_results=tool_results))
 
+        notify("Generando reporte final...")
         messages.append(Message(role="user", content=_FINAL_REPORT_PROMPT))
         final = self._adapter.chat(messages)
         report = final.content or "(análisis incompleto)"
-        return self._audit(messages, final, report)
+        return self._audit(messages, final, report, notify)
 
-    def _audit(self, messages: list[Message], last_response: Message, report: str) -> str:
+    def _audit(self, messages: list[Message], last_response: Message, report: str,
+               notify: Callable[[str], None]) -> str:
+        notify("Auditando el reporte...")
         audit_messages = messages + [
             last_response,
             Message(role="user", content=_AUDIT_PROMPT.format(report=report)),
