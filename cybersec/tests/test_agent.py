@@ -21,7 +21,7 @@ def test_agent_returns_text_on_first_response():
     adapter = _adapter(Message(role="assistant", content="Sistema seguro."))
     result = SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost"))
     assert "Sistema seguro" in result
-    assert adapter.chat.call_count == 1
+    assert adapter.chat.call_count == 2
 
 def test_agent_calls_tool_then_responds():
     adapter = _adapter(
@@ -33,7 +33,7 @@ def test_agent_calls_tool_then_responds():
     result = agent.run(ScanScope("localhost"))
     assert "2 problemas" in result
     tool.execute.assert_called_once()
-    assert adapter.chat.call_count == 2
+    assert adapter.chat.call_count == 3
 
 def test_agent_stops_at_max_iterations():
     loop_msg = Message(role="assistant", content="", tool_calls=[{"name": "scan_ports", "args": {"host": "localhost"}}])
@@ -119,3 +119,59 @@ def test_final_report_prompt_requests_findings_json_section():
     agent.run(ScanScope("localhost"))
     last_messages = adapter.chat.call_args[0][0]
     assert "HALLAZGOS_JSON:" in last_messages[-1].content
+
+
+def test_agent_runs_audit_pass_with_report_as_context():
+    first_response = Message(
+        role="assistant",
+        content='Sistema seguro.\nHALLAZGOS_JSON:\n```json\n[]\n```\nPRÓXIMOS PASOS:\n1. Nada.',
+    )
+    audit_response = Message(
+        role="assistant",
+        content='Reporte auditado.\nHALLAZGOS_JSON:\n```json\n[]\n```\nPRÓXIMOS PASOS:\n1. Nada.',
+    )
+    adapter = _adapter(first_response, audit_response)
+    result = SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost"))
+    assert adapter.chat.call_count == 2
+    audit_messages = adapter.chat.call_args[0][0]
+    assert "Sistema seguro" in audit_messages[-1].content
+    assert result == audit_response.content
+
+
+def test_audit_prompt_includes_report_and_checklist():
+    first_response = Message(role="assistant", content="Reporte inicial.")
+    audit_response = Message(role="assistant", content="Reporte auditado.")
+    adapter = _adapter(first_response, audit_response)
+    SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost"))
+    audit_prompt = adapter.chat.call_args[0][0][-1].content
+    assert "Reporte inicial." in audit_prompt
+    assert "scan_code_security" in audit_prompt
+    assert "HALLAZGOS_JSON" in audit_prompt
+
+
+def test_audit_call_does_not_pass_tools():
+    first_response = Message(role="assistant", content="Reporte inicial.")
+    audit_response = Message(role="assistant", content="Reporte auditado.")
+    adapter = _adapter(first_response, audit_response)
+    SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost"))
+    assert adapter.chat.call_args_list[1].kwargs == {}
+
+
+def test_audit_falls_back_to_original_report_on_failure():
+    first_response = Message(role="assistant", content="Reporte inicial.")
+    adapter = _adapter(first_response, RuntimeError("auditor no disponible"))
+    result = SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost"))
+    assert result == "Reporte inicial."
+
+
+def test_agent_uses_audit_adapter_when_provided():
+    first_response = Message(role="assistant", content="Reporte inicial.")
+    audit_response = Message(role="assistant", content="Reporte auditado por modelo fuerte.")
+    main_adapter = _adapter(first_response)
+    audit_adapter = _adapter(audit_response)
+    result = SecurityAgent(
+        adapter=main_adapter, tool_registry={}, audit_adapter=audit_adapter
+    ).run(ScanScope("localhost"))
+    main_adapter.chat.assert_called_once()
+    audit_adapter.chat.assert_called_once()
+    assert result == "Reporte auditado por modelo fuerte."

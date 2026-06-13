@@ -54,12 +54,43 @@ diagnóstico con severidad y recomendaciones concretas.
 
 _FINAL_REPORT_PROMPT = "Genera el reporte final con los hallazgos recopilados. " + _OUTPUT_FORMAT_INSTRUCTIONS
 
+_AUDIT_PROMPT = """Eres un auditor de seguridad senior. Tu tarea es revisar el
+siguiente reporte generado por otro analista, comparándolo con toda la
+evidencia (resultados de herramientas, logs, código fuente) que aparece en
+esta misma conversación. Tu meta es producir una versión corregida y completa
+del reporte — no expliques los cambios, entrega directamente el reporte final.
+
+Reporte a auditar:
+---
+{report}
+---
+
+Antes de responder, verifica punto por punto contra la evidencia disponible:
+1. Si se ejecutó scan_code_security y reportó hallazgos de severidad Medium o
+   High, confirma que TODOS estén reflejados en HALLAZGOS_JSON. Agrega los
+   que falten.
+2. Revisa cada read_code_snippet: si aparece una contraseña, secreto, token o
+   credencial en texto plano — sin importar el nombre de la variable
+   (password, pwd, secret, key, token, credential, etc.) — confirma que esté
+   reportado en HALLAZGOS_JSON con severidad High. Si falta, agrégalo.
+3. Confirma que se hayan revisado los archivos obligatorios de seguridad
+   (settings, config, auth, login, password, credential, docker-compose,
+   Dockerfile, .env, middleware) que existan en el código analizado. Si el
+   análisis se detuvo antes de hacerlo, complétalo con lo que puedas inferir
+   de la evidencia disponible.
+
+Si el reporte original ya cumple todo lo anterior, repítelo sin cambios.
+
+""" + _OUTPUT_FORMAT_INSTRUCTIONS
+
 
 class SecurityAgent:
-    def __init__(self, adapter: LLMAdapter, tool_registry: dict, max_iterations: int = 10):
+    def __init__(self, adapter: LLMAdapter, tool_registry: dict, max_iterations: int = 10,
+                 audit_adapter: LLMAdapter = None):
         self._adapter = adapter
         self._registry = tool_registry
         self._max_iterations = max_iterations
+        self._audit_adapter = audit_adapter
 
     def run(self, scope: ScanScope) -> str:
         initial = _PROMPT.format(
@@ -76,7 +107,8 @@ class SecurityAgent:
             response = self._adapter.chat(messages, tools=tools)
 
             if not response.tool_calls:
-                return response.content or "(sin respuesta)"
+                report = response.content or "(sin respuesta)"
+                return self._audit(messages, response, report)
 
             messages.append(response)
             tool_results = []
@@ -99,4 +131,18 @@ class SecurityAgent:
 
         messages.append(Message(role="user", content=_FINAL_REPORT_PROMPT))
         final = self._adapter.chat(messages)
-        return final.content or "(análisis incompleto)"
+        report = final.content or "(análisis incompleto)"
+        return self._audit(messages, final, report)
+
+    def _audit(self, messages: list[Message], last_response: Message, report: str) -> str:
+        audit_messages = messages + [
+            last_response,
+            Message(role="user", content=_AUDIT_PROMPT.format(report=report)),
+        ]
+        adapter = self._audit_adapter or self._adapter
+        try:
+            audit_response = adapter.chat(audit_messages)
+            return audit_response.content or report
+        except Exception:
+            logger.exception("Error en la auditoría del reporte, se conserva el original")
+            return report

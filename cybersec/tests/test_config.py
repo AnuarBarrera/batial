@@ -28,3 +28,16 @@ def test_config_gemini_model_override():
         import cybersec.config as cfg
         reload(cfg)
         assert cfg.GEMINI_MODEL == "gemini-2.5-pro"
+
+def test_config_gemini_audit_model_default():
+    clean = {k: v for k, v in os.environ.items() if k != "GEMINI_AUDIT_MODEL"}
+    with patch.dict(os.environ, clean, clear=True):
+        import cybersec.config as cfg
+        reload(cfg)
+        assert cfg.GEMINI_AUDIT_MODEL == "gemini-2.5-flash"
+
+def test_config_gemini_audit_model_override():
+    with patch.dict(os.environ, {"GEMINI_AUDIT_MODEL": "gemini-2.5-pro"}):
+        import cybersec.config as cfg
+        reload(cfg)
+        assert cfg.GEMINI_AUDIT_MODEL == "gemini-2.5-pro"

@@ -11,7 +11,7 @@ Proyecto construido en el hackathon de Google (agentes de IA), Junio 2026.
 El agente recibe un scope de análisis (host, logs, directorio de código), lanza un loop agentico donde el LLM decide qué herramientas usar y en qué orden, ejecuta cada herramienta localmente y produce un reporte con hallazgos, severidad y recomendaciones concretas.
 
 ```
-Usuario define scope → LLM decide tools → Tools corren en local → LLM genera diagnóstico → Reporte en pantalla + email
+Usuario define scope → LLM decide tools → Tools corren en local → LLM genera diagnóstico → LLM auditor revisa el reporte → Reporte en pantalla + email
 ```
 
 ### Herramientas disponibles
@@ -39,7 +39,7 @@ cybersec/
 │       ├── adapters/         # GeminiAdapter + OpenAICompatAdapter
 │       ├── tools/            # Las 7 herramientas de análisis
 │       └── notifiers/        # MailgunNotifier (email)
-├── tests/                    # 100 tests con pytest
+├── tests/                    # 107 tests con pytest
 ├── .env.example
 ├── requirements.txt
 └── pytest.ini
@@ -79,6 +79,7 @@ Copia `.env.example` a `.env` y completa los valores:
 # LLM — Gemini (créditos del hackathon)
 GEMINI_API_KEY=tu_api_key
 GEMINI_MODEL=gemini-2.5-flash-lite  # mayor cuota free-tier que gemini-2.5-flash
+GEMINI_AUDIT_MODEL=gemini-2.5-flash  # solo para el paso de auditoría del reporte final
 
 # LLM — OpenAI-compatible (vLLM propio, Ollama, Groq, Together…)
 OPENAI_COMPAT_BASE_URL=http://tu-servidor:8000
@@ -157,7 +158,7 @@ source venv/bin/activate
 pytest -v
 ```
 
-100 tests cubriendo domain, tools, adapters, agent loop y reporte.
+107 tests cubriendo domain, tools, adapters, agent loop y reporte.
 
 ---
 
@@ -166,6 +167,8 @@ pytest -v
 ### Gemini (default)
 
 Usa la API de Google Gemini con function calling nativo. Requiere `GEMINI_API_KEY`. Modelo por defecto: `gemini-2.5-flash-lite` (configurable con `GEMINI_MODEL`).
+
+Además del modelo principal, se hace una segunda llamada de **auditoría** con `GEMINI_AUDIT_MODEL` (default `gemini-2.5-flash`, más capaz que `-lite`): revisa el reporte generado contra toda la evidencia recopilada (resultados de tools, código leído) usando un checklist explícito — hallazgos de `scan_code_security` con severidad Medium/High, contraseñas o secretos en texto plano, archivos obligatorios sin revisar — y corrige el reporte final si encuentra omisiones. Si esta llamada falla, se conserva el reporte original sin auditar.
 
 ### OpenAI-compatible
 
@@ -191,9 +194,11 @@ Fase 1 (MVP) completa y validada end-to-end con una corrida real de producción:
 RESUMEN EJECUTIVO con conteo correcto de hallazgos, HALLAZGOS estructurados
 ordenados por severidad (parseados desde `HALLAZGOS_JSON`), análisis del agente
 sobre código fuente real (`list_code_files` + `read_code_snippet` + análisis
-estático determinista con `scan_code_security`/bandit) y PRÓXIMOS PASOS
-poblados con acciones priorizadas. 100/100 tests pasando.
+estático determinista con `scan_code_security`/bandit), un paso de auditoría
+con un modelo más capaz (`GEMINI_AUDIT_MODEL`) que revisa el reporte contra la
+evidencia recopilada, y PRÓXIMOS PASOS poblados con acciones priorizadas.
+107/107 tests pasando.
 
 Próximos pasos: pruebas adicionales contra otros repos y servidores para
-evaluar cobertura de hallazgos, y luego Fase 2 (remediación asistida) sobre
-un proyecto sin riesgo.
+evaluar cobertura de hallazgos (con el nuevo paso de auditoría activo), y luego
+Fase 2 (remediación asistida) sobre un proyecto sin riesgo.

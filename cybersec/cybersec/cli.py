@@ -7,12 +7,12 @@ from cybersec.application.agent import SecurityAgent
 from cybersec.application.report import ReportGenerator, format_report_text
 
 
-def _build_adapter(adapter_name: str):
+def _build_adapter(adapter_name: str, model: str = None):
     if adapter_name == "gemini":
         from cybersec.infrastructure.adapters.gemini import GeminiAdapter
         if not config.GEMINI_API_KEY:
             raise click.UsageError("GEMINI_API_KEY no configurada en .env")
-        return GeminiAdapter(api_key=config.GEMINI_API_KEY, model=config.GEMINI_MODEL)
+        return GeminiAdapter(api_key=config.GEMINI_API_KEY, model=model or config.GEMINI_MODEL)
     else:
         from cybersec.infrastructure.adapters.openai_compat import OpenAICompatAdapter
         if not config.OPENAI_COMPAT_BASE_URL:
@@ -58,8 +58,9 @@ def scan(host, logs, code_dir, types, email, adapter):
     click.echo()
 
     llm = _build_adapter(adapter)
+    audit_llm = _build_adapter(adapter, model=config.GEMINI_AUDIT_MODEL) if adapter == "gemini" else None
     registry = get_registry()
-    agent = SecurityAgent(adapter=llm, tool_registry=registry)
+    agent = SecurityAgent(adapter=llm, tool_registry=registry, audit_adapter=audit_llm)
 
     with click.progressbar(length=1, label="Analizando sistema", show_eta=False) as bar:
         analysis_text = agent.run(scope)
