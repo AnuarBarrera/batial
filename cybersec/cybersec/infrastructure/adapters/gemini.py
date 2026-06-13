@@ -31,7 +31,7 @@ def _to_fn_declaration(spec: dict) -> types.FunctionDeclaration:
 
 
 class GeminiAdapter(LLMAdapter):
-    def __init__(self, api_key: str, model: str = "gemini-2.5-flash"):
+    def __init__(self, api_key: str, model: str = "gemini-3.1-flash-lite"):
         self._api_key = api_key
         self._model = model
 
@@ -48,7 +48,10 @@ class GeminiAdapter(LLMAdapter):
             elif m.role == "assistant":
                 if m.tool_calls:
                     parts = [
-                        types.Part(function_call=types.FunctionCall(name=tc["name"], args=tc["args"]))
+                        types.Part(
+                            function_call=types.FunctionCall(name=tc["name"], args=tc["args"]),
+                            thought_signature=tc.get("thought_signature"),
+                        )
                         for tc in m.tool_calls
                     ]
                     contents.append(types.Content(role="model", parts=parts))
@@ -92,8 +95,12 @@ class GeminiAdapter(LLMAdapter):
                     raise
 
         if response.function_calls:
-            return Message(
-                role="assistant", content="",
-                tool_calls=[{"name": fc.name, "args": dict(fc.args)} for fc in response.function_calls],
-            )
+            tool_calls = []
+            for part in response.candidates[0].content.parts:
+                if part.function_call is not None:
+                    tc = {"name": part.function_call.name, "args": dict(part.function_call.args)}
+                    if part.thought_signature is not None:
+                        tc["thought_signature"] = part.thought_signature
+                    tool_calls.append(tc)
+            return Message(role="assistant", content="", tool_calls=tool_calls)
         return Message(role="assistant", content=response.text or "")

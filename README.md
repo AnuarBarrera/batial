@@ -78,8 +78,8 @@ Copia `.env.example` a `.env` y completa los valores:
 ```env
 # LLM — Gemini (créditos del hackathon)
 GEMINI_API_KEY=tu_api_key
-GEMINI_MODEL=gemini-2.5-flash-lite  # mayor cuota free-tier que gemini-2.5-flash
-GEMINI_AUDIT_MODEL=gemini-2.5-flash  # solo para el paso de auditoría del reporte final
+GEMINI_MODEL=gemini-3.1-flash-lite  # modelo estable de bajo costo para alto volumen
+GEMINI_AUDIT_MODEL=gemini-3.5-flash  # solo para el paso de auditoría del reporte final
 
 # LLM — OpenAI-compatible (vLLM propio, Ollama, Groq, Together…)
 OPENAI_COMPAT_BASE_URL=http://tu-servidor:8000
@@ -171,9 +171,9 @@ pytest -v
 
 ### Gemini (default)
 
-Usa la API de Google Gemini con function calling nativo. Requiere `GEMINI_API_KEY`. Modelo por defecto: `gemini-2.5-flash-lite` (configurable con `GEMINI_MODEL`).
+Usa la API de Google Gemini con function calling nativo. Requiere `GEMINI_API_KEY`. Modelo por defecto: `gemini-3.1-flash-lite` (configurable con `GEMINI_MODEL`).
 
-Además del modelo principal, se hace una segunda llamada de **auditoría** con `GEMINI_AUDIT_MODEL` (default `gemini-2.5-flash`, más capaz que `-lite`): revisa el reporte generado contra toda la evidencia recopilada (resultados de tools, código leído) usando un checklist explícito — hallazgos de `scan_code_security` con severidad Medium/High, contraseñas o secretos en texto plano, archivos obligatorios sin revisar — y corrige el reporte final si encuentra omisiones. Si esta llamada falla, se conserva el reporte original sin auditar.
+Además del modelo principal, se hace una segunda llamada de **auditoría** con `GEMINI_AUDIT_MODEL` (default `gemini-3.5-flash`, modelo de frontera para tareas agénticas, más capaz que `-lite`): revisa el reporte generado contra toda la evidencia recopilada (resultados de tools, código leído) usando un checklist explícito — hallazgos de `scan_code_security` con severidad Medium/High, contraseñas o secretos en texto plano, archivos obligatorios sin revisar — y corrige el reporte final si encuentra omisiones. Si esta llamada falla, se conserva el reporte original sin auditar.
 
 ### OpenAI-compatible
 
