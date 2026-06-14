@@ -343,3 +343,21 @@ def test_agent_traces_tool_result_when_tool_raises():
         metadata={},
         content_length=len(expected_content),
     )
+
+
+def test_agent_traces_loop_end_reason_no_tool_calls():
+    adapter = _adapter(Message(role="assistant", content="Sistema seguro."))
+    tracer = MagicMock()
+    SecurityAgent(adapter=adapter, tool_registry={}, tracer=tracer).run(ScanScope("localhost"))
+    tracer.record.assert_any_call("loop_end", reason="no_tool_calls", iteration=1)
+
+
+def test_agent_traces_loop_end_reason_max_iterations():
+    loop_msg = Message(role="assistant", content="", tool_calls=[{"name": "scan_ports", "args": {"host": "localhost"}}])
+    final_msg = Message(role="assistant", content="Análisis parcial.")
+    adapter = _adapter(*([loop_msg] * 3 + [final_msg]))
+    tool = _tool("scan_ports", "22/tcp open")
+    tracer = MagicMock()
+    agent = SecurityAgent(adapter=adapter, tool_registry={"scan_ports": tool}, max_iterations=3, tracer=tracer)
+    agent.run(ScanScope("localhost"))
+    tracer.record.assert_any_call("loop_end", reason="max_iterations", iteration=3)

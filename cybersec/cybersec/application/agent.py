@@ -163,6 +163,7 @@ class SecurityAgent:
 
             if not response.tool_calls:
                 report = response.content or "(sin respuesta)"
+                self._trace("loop_end", reason="no_tool_calls", iteration=i + 1)
                 return self._audit(messages, response, report, notify)
 
             messages.append(response)
@@ -199,6 +200,7 @@ class SecurityAgent:
 
             messages.append(Message(role="tool", content="", tool_results=tool_results))
 
+        self._trace("loop_end", reason="max_iterations", iteration=self._max_iterations)
         notify("Generando reporte final...")
         messages.append(Message(role="user", content=_FINAL_REPORT_PROMPT))
         final = self._adapter.chat(messages)
