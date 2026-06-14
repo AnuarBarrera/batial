@@ -224,6 +224,13 @@ def test_extract_findings_logs_error_when_json_invalid(caplog):
     assert any("HALLAZGOS_JSON" in r.message for r in caplog.records)
 
 
+def test_extract_findings_logs_warning_when_json_block_missing(caplog):
+    text = "HALLAZGOS_JSON:\nNo hay bloque de código aquí.\n"
+    with caplog.at_level(logging.WARNING, logger="cybersec.application.report"):
+        _extract_findings(text)
+    assert any("HALLAZGOS_JSON" in r.message for r in caplog.records)
+
+
 def test_extract_next_steps_logs_warning_when_header_not_found(caplog):
     text = "Solo un resumen, sin secciones especiales."
     with caplog.at_level(logging.WARNING, logger="cybersec.application.report"):
