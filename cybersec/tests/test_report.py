@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from cybersec.domain.entities import ScanScope, Finding, SecurityReport
 from cybersec.application.report import ReportGenerator, format_report_text, _extract_next_steps, _extract_findings
@@ -207,3 +208,24 @@ def test_report_proximos_pasos_prefers_next_steps_over_findings():
     assert "1. Actualizar pip" in text
     assert "2. Cerrar puerto 8080" in text
     assert "[High] Actualizar pip a la última versión" not in text
+
+
+def test_extract_findings_logs_warning_when_header_not_found(caplog):
+    text = "Solo un análisis, sin sección de hallazgos."
+    with caplog.at_level(logging.WARNING, logger="cybersec.application.report"):
+        _extract_findings(text)
+    assert any("HALLAZGOS_JSON" in r.message for r in caplog.records)
+
+
+def test_extract_findings_logs_error_when_json_invalid(caplog):
+    text = "HALLAZGOS_JSON:\n```json\nesto no es json\n```\n"
+    with caplog.at_level(logging.ERROR, logger="cybersec.application.report"):
+        _extract_findings(text)
+    assert any("HALLAZGOS_JSON" in r.message for r in caplog.records)
+
+
+def test_extract_next_steps_logs_warning_when_header_not_found(caplog):
+    text = "Solo un resumen, sin secciones especiales."
+    with caplog.at_level(logging.WARNING, logger="cybersec.application.report"):
+        _extract_next_steps(text)
+    assert any("PRÓXIMOS PASOS" in r.message for r in caplog.records)

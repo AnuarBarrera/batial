@@ -1,7 +1,10 @@
 import json
+import logging
 import re
 from datetime import datetime
 from cybersec.domain.entities import Finding, ScanScope, SecurityReport
+
+logger = logging.getLogger(__name__)
 
 SEVERITY_ORDER = ["Critical", "High", "Medium", "Low"]
 
@@ -26,6 +29,8 @@ def _extract_next_steps(text: str) -> tuple[str, list[str]]:
     """
     match = _NEXT_STEPS_HEADER_RE.search(text)
     if not match:
+        logger.warning("Sección 'PRÓXIMOS PASOS:' no encontrada en la respuesta del LLM")
+        logger.debug("Texto recibido:\n%s", text)
         return text, []
     main_text = text[:match.start()].rstrip()
     section = text[match.end():]
@@ -44,13 +49,19 @@ def _extract_findings(text: str) -> tuple[str, list[Finding]]:
     """
     match = _FINDINGS_HEADER_RE.search(text)
     if not match:
+        logger.warning("Sección 'HALLAZGOS_JSON:' no encontrada en la respuesta del LLM")
+        logger.debug("Texto recibido:\n%s", text)
         return text, []
     json_match = _JSON_BLOCK_RE.search(text[match.end():])
     if not json_match:
+        logger.warning("Sección 'HALLAZGOS_JSON:' presente pero sin bloque ```json```")
+        logger.debug("Contenido de la sección:\n%s", text[match.end():])
         return text, []
     try:
         data = json.loads(json_match.group(1))
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        logger.error("JSON inválido en HALLAZGOS_JSON: %s", e)
+        logger.debug("Texto problemático:\n%s", json_match.group(1))
         return text, []
     if isinstance(data, dict):
         data = data.get("findings", [])
