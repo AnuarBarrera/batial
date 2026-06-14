@@ -31,9 +31,10 @@ def _to_fn_declaration(spec: dict) -> types.FunctionDeclaration:
 
 
 class GeminiAdapter(LLMAdapter):
-    def __init__(self, api_key: str, model: str = "gemini-3.1-flash-lite"):
+    def __init__(self, api_key: str, model: str = "gemini-3.1-flash-lite", temperature: float = None):
         self._api_key = api_key
         self._model = model
+        self._temperature = temperature
 
     def supports_tools(self) -> bool:
         return True
@@ -67,6 +68,8 @@ class GeminiAdapter(LLMAdapter):
                 contents.append(types.Content(role="user", parts=parts))
 
         cfg_kwargs = {"system_instruction": _SYSTEM}
+        if self._temperature is not None:
+            cfg_kwargs["temperature"] = self._temperature
         if tools:
             cfg_kwargs["tools"] = [types.Tool(function_declarations=[_to_fn_declaration(t) for t in tools])]
             if len(messages) == 1:

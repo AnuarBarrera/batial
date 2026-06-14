@@ -162,6 +162,36 @@ def test_gemini_chat_replays_thought_signature_for_tool_call_message(mock_genai)
     assert model_content.parts[0].thought_signature == b"sig-123"
 
 
+@patch("cybersec.infrastructure.adapters.gemini.genai")
+def test_gemini_chat_passes_temperature_when_configured(mock_genai):
+    mock_client = MagicMock()
+    mock_genai.Client.return_value = mock_client
+    mock_resp = MagicMock()
+    mock_resp.text = "ok"
+    mock_resp.function_calls = []
+    mock_client.models.generate_content.return_value = mock_resp
+
+    GeminiAdapter(api_key="fake", temperature=0.0).chat([Message(role="user", content="analiza")])
+
+    config = mock_client.models.generate_content.call_args.kwargs["config"]
+    assert config.temperature == 0.0
+
+
+@patch("cybersec.infrastructure.adapters.gemini.genai")
+def test_gemini_chat_omits_temperature_by_default(mock_genai):
+    mock_client = MagicMock()
+    mock_genai.Client.return_value = mock_client
+    mock_resp = MagicMock()
+    mock_resp.text = "ok"
+    mock_resp.function_calls = []
+    mock_client.models.generate_content.return_value = mock_resp
+
+    GeminiAdapter(api_key="fake").chat([Message(role="user", content="analiza")])
+
+    config = mock_client.models.generate_content.call_args.kwargs["config"]
+    assert config.temperature is None
+
+
 from cybersec.infrastructure.adapters.openai_compat import OpenAICompatAdapter
 
 def test_openai_compat_implements_llm_adapter():
