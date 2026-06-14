@@ -92,7 +92,11 @@ Antes de responder, verifica punto por punto contra la evidencia disponible:
 2. Revisa cada read_code_snippet: si aparece una contraseña, secreto, token o
    credencial en texto plano — sin importar el nombre de la variable
    (password, pwd, secret, key, token, credential, etc.) — confirma que esté
-   reportado en HALLAZGOS_JSON con severidad High. Si falta, agrégalo.
+   reportado en HALLAZGOS_JSON con la severidad que corresponda según los
+   CRITERIOS DE SEVERIDAD: Critical si ese valor se asigna a un atributo,
+   diccionario u objeto que luego se guarda o persiste (base de datos, archivo,
+   token, sesión); High si es solo una credencial o clave hardcodeada que no se
+   persiste. Si el hallazgo falta, agrégalo.
 3. Confirma que se hayan revisado los archivos obligatorios de seguridad
    (settings, config, auth, login, password, credential, docker-compose,
    Dockerfile, .env, middleware) que existan en el código analizado. Si el

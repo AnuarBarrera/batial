@@ -217,3 +217,12 @@ def test_output_format_instructions_define_severity_criteria():
     assert "Critical" in text and "High" in text and "Medium" in text and "Low" in text
     assert "no inventes hallazgos" in text.lower()
     assert "PERSISTEN" in text
+
+
+def test_audit_prompt_checklist_aligns_secret_severity_with_persistence():
+    first_response = Message(role="assistant", content="Reporte inicial.")
+    audit_response = Message(role="assistant", content="Reporte auditado.")
+    adapter = _adapter(first_response, audit_response)
+    SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost"))
+    audit_prompt = adapter.chat.call_args[0][0][-1].content
+    assert "se guarda o persiste" in audit_prompt
