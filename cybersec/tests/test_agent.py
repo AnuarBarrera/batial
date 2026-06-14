@@ -226,3 +226,20 @@ def test_audit_prompt_checklist_aligns_secret_severity_with_persistence():
     SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost"))
     audit_prompt = adapter.chat.call_args[0][0][-1].content
     assert "se guarda o persiste" in audit_prompt
+
+
+def test_agent_traces_run_start_with_scope_info():
+    adapter = _adapter(Message(role="assistant", content="Sistema seguro."))
+    tracer = MagicMock()
+    SecurityAgent(adapter=adapter, tool_registry={}, tracer=tracer).run(
+        ScanScope("localhost", code_directory="/tmp/proyecto",
+                  analysis_types=["code"], log_files=["/var/log/auth.log"])
+    )
+    tracer.record.assert_any_call(
+        "run_start",
+        host="localhost",
+        code_directory="/tmp/proyecto",
+        analysis_types=["code"],
+        log_files=["/var/log/auth.log"],
+        max_iterations=10,
+    )

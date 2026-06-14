@@ -110,11 +110,16 @@ Si el reporte original ya cumple todo lo anterior, repítelo sin cambios.
 
 class SecurityAgent:
     def __init__(self, adapter: LLMAdapter, tool_registry: dict, max_iterations: int = 10,
-                 audit_adapter: LLMAdapter = None):
+                 audit_adapter: LLMAdapter = None, tracer=None):
         self._adapter = adapter
         self._registry = tool_registry
         self._max_iterations = max_iterations
         self._audit_adapter = audit_adapter
+        self._tracer = tracer
+
+    def _trace(self, event: str, **fields) -> None:
+        if self._tracer is not None:
+            self._tracer.record(event, **fields)
 
     def run(self, scope: ScanScope, on_progress: Optional[Callable[[str], None]] = None) -> str:
         def notify(message: str) -> None:
@@ -130,6 +135,15 @@ class SecurityAgent:
         )
         messages: list[Message] = [Message(role="user", content=initial)]
         tools = get_tool_schemas()
+
+        self._trace(
+            "run_start",
+            host=scope.target_host,
+            code_directory=scope.code_directory,
+            analysis_types=scope.analysis_types,
+            log_files=scope.log_files,
+            max_iterations=self._max_iterations,
+        )
 
         for i in range(self._max_iterations):
             notify(f"Analizando (paso {i + 1}/{self._max_iterations})...")
