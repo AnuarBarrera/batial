@@ -269,3 +269,77 @@ def test_agent_traces_llm_response_with_tool_calls():
         tool_calls=[],
         content_preview="2 problemas en SSH encontrados.",
     )
+
+
+def test_agent_traces_tool_result_with_metadata():
+    adapter = _adapter(
+        Message(role="assistant", content="", tool_calls=[
+            {"name": "read_code_snippet", "args": {"file_path": "/tmp/auth_service.py"}}
+        ]),
+        Message(role="assistant", content="Listo."),
+    )
+    content = "# /tmp/auth_service.py\n```python\npassword = 'x'\n```"
+    tool = MagicMock()
+    tool.name = "read_code_snippet"
+    tool.execute.return_value = ToolResult(
+        content=content, tool_name="read_code_snippet", success=True,
+        metadata={"file_path": "/tmp/auth_service.py", "lines": 3, "truncated": False},
+    )
+    tracer = MagicMock()
+    agent = SecurityAgent(adapter=adapter, tool_registry={"read_code_snippet": tool}, tracer=tracer)
+    agent.run(ScanScope("localhost"))
+
+    tracer.record.assert_any_call(
+        "tool_result",
+        iteration=1,
+        name="read_code_snippet",
+        args={"file_path": "/tmp/auth_service.py"},
+        success=True,
+        metadata={"file_path": "/tmp/auth_service.py", "lines": 3, "truncated": False},
+        content_length=len(content),
+    )
+
+
+def test_agent_traces_tool_result_for_unknown_tool():
+    adapter = _adapter(
+        Message(role="assistant", content="", tool_calls=[{"name": "ghost_tool", "args": {}}]),
+        Message(role="assistant", content="Listo."),
+    )
+    tracer = MagicMock()
+    agent = SecurityAgent(adapter=adapter, tool_registry={}, tracer=tracer)
+    agent.run(ScanScope("localhost"))
+
+    expected_content = "Herramienta 'ghost_tool' no disponible."
+    tracer.record.assert_any_call(
+        "tool_result",
+        iteration=1,
+        name="ghost_tool",
+        args={},
+        success=False,
+        metadata={},
+        content_length=len(expected_content),
+    )
+
+
+def test_agent_traces_tool_result_when_tool_raises():
+    adapter = _adapter(
+        Message(role="assistant", content="", tool_calls=[{"name": "scan_ports", "args": {"host": "localhost"}}]),
+        Message(role="assistant", content="Listo."),
+    )
+    tool = MagicMock()
+    tool.name = "scan_ports"
+    tool.execute.side_effect = RuntimeError("boom")
+    tracer = MagicMock()
+    agent = SecurityAgent(adapter=adapter, tool_registry={"scan_ports": tool}, tracer=tracer)
+    agent.run(ScanScope("localhost"))
+
+    expected_content = "Error en scan_ports: boom"
+    tracer.record.assert_any_call(
+        "tool_result",
+        iteration=1,
+        name="scan_ports",
+        args={"host": "localhost"},
+        success=False,
+        metadata={},
+        content_length=len(expected_content),
+    )

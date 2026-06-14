@@ -172,16 +172,30 @@ class SecurityAgent:
                 name, args = tc["name"], tc.get("args", {})
                 notify(f"Ejecutando {name}...")
                 tool = self._registry.get(name)
+                success = False
+                metadata = {}
                 if tool is None:
                     content = f"Herramienta '{name}' no disponible."
                     logger.warning(content)
                 else:
                     try:
-                        content = tool.execute(**args).content
+                        result = tool.execute(**args)
+                        content = result.content
+                        success = result.success
+                        metadata = result.metadata
                     except Exception as e:
                         content = f"Error en {name}: {e}"
                         logger.error(content, exc_info=True)
                 tool_results.append({"name": name, "content": content})
+                self._trace(
+                    "tool_result",
+                    iteration=i + 1,
+                    name=name,
+                    args=args,
+                    success=success,
+                    metadata=metadata,
+                    content_length=len(content),
+                )
 
             messages.append(Message(role="tool", content="", tool_results=tool_results))
 
