@@ -149,6 +149,18 @@ class SecurityAgent:
             notify(f"Analizando (paso {i + 1}/{self._max_iterations})...")
             response = self._adapter.chat(messages, tools=tools)
 
+            tool_calls_summary = [
+                {"name": tc["name"], "args": tc.get("args", {})}
+                for tc in (response.tool_calls or [])
+            ]
+            self._trace(
+                "llm_response",
+                iteration=i + 1,
+                has_tool_calls=bool(response.tool_calls),
+                tool_calls=tool_calls_summary,
+                content_preview=(response.content or "")[:200],
+            )
+
             if not response.tool_calls:
                 report = response.content or "(sin respuesta)"
                 return self._audit(messages, response, report, notify)

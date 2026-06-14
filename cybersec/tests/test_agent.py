@@ -243,3 +243,29 @@ def test_agent_traces_run_start_with_scope_info():
         log_files=["/var/log/auth.log"],
         max_iterations=10,
     )
+
+
+def test_agent_traces_llm_response_with_tool_calls():
+    adapter = _adapter(
+        Message(role="assistant", content="", tool_calls=[{"name": "check_configs", "args": {"path": "/etc/ssh"}}]),
+        Message(role="assistant", content="2 problemas en SSH encontrados."),
+    )
+    tool = _tool("check_configs", "PermitRootLogin yes")
+    tracer = MagicMock()
+    agent = SecurityAgent(adapter=adapter, tool_registry={"check_configs": tool}, tracer=tracer)
+    agent.run(ScanScope("localhost"))
+
+    tracer.record.assert_any_call(
+        "llm_response",
+        iteration=1,
+        has_tool_calls=True,
+        tool_calls=[{"name": "check_configs", "args": {"path": "/etc/ssh"}}],
+        content_preview="",
+    )
+    tracer.record.assert_any_call(
+        "llm_response",
+        iteration=2,
+        has_tool_calls=False,
+        tool_calls=[],
+        content_preview="2 problemas en SSH encontrados.",
+    )
