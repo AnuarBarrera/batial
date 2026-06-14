@@ -217,7 +217,10 @@ class SecurityAgent:
         adapter = self._audit_adapter or self._adapter
         try:
             audit_response = adapter.chat(audit_messages)
-            return audit_response.content or report
+            result = audit_response.content or report
+            self._trace("audit_result", success=True, report=result)
+            return result
         except Exception:
             logger.exception("Error en la auditoría del reporte, se conserva el original")
+            self._trace("audit_result", success=False, report=report)
             return report

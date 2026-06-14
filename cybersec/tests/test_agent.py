@@ -361,3 +361,20 @@ def test_agent_traces_loop_end_reason_max_iterations():
     agent = SecurityAgent(adapter=adapter, tool_registry={"scan_ports": tool}, max_iterations=3, tracer=tracer)
     agent.run(ScanScope("localhost"))
     tracer.record.assert_any_call("loop_end", reason="max_iterations", iteration=3)
+
+
+def test_agent_traces_audit_result_on_success():
+    first_response = Message(role="assistant", content="Reporte inicial.")
+    audit_response = Message(role="assistant", content="Reporte auditado.")
+    adapter = _adapter(first_response, audit_response)
+    tracer = MagicMock()
+    SecurityAgent(adapter=adapter, tool_registry={}, tracer=tracer).run(ScanScope("localhost"))
+    tracer.record.assert_any_call("audit_result", success=True, report="Reporte auditado.")
+
+
+def test_agent_traces_audit_result_on_failure():
+    first_response = Message(role="assistant", content="Reporte inicial.")
+    adapter = _adapter(first_response, RuntimeError("auditor no disponible"))
+    tracer = MagicMock()
+    SecurityAgent(adapter=adapter, tool_registry={}, tracer=tracer).run(ScanScope("localhost"))
+    tracer.record.assert_any_call("audit_result", success=False, report="Reporte inicial.")
