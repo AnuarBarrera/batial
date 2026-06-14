@@ -208,3 +208,12 @@ def test_agent_reports_progress_before_audit_pass():
     progress = []
     SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost"), on_progress=progress.append)
     assert any("audit" in m.lower() for m in progress)
+
+
+def test_output_format_instructions_define_severity_criteria():
+    from cybersec.application.agent import _OUTPUT_FORMAT_INSTRUCTIONS
+    text = _OUTPUT_FORMAT_INSTRUCTIONS
+    assert "CRITERIOS DE SEVERIDAD" in text
+    assert "Critical" in text and "High" in text and "Medium" in text and "Low" in text
+    assert "no inventes hallazgos" in text.lower()
+    assert "PERSISTEN" in text

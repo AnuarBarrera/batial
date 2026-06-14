@@ -6,14 +6,33 @@ from cybersec.infrastructure.tools.registry import get_tool_schemas
 
 logger = logging.getLogger(__name__)
 
-_OUTPUT_FORMAT_INSTRUCTIONS = (
-    "Tu respuesta final debe incluir, en este orden:\n"
+_SEVERITY_CRITERIA = """CRITERIOS DE SEVERIDAD — usa exactamente estas definiciones al clasificar:
+  Critical : Explotable remotamente sin autenticación con evidencia de explotación
+             activa en logs, O credenciales/contraseñas/secretos en texto plano que
+             se ALMACENAN o PERSISTEN (en base de datos, archivos, tokens, sesiones)
+             y permitirían comprometer cuentas directamente.
+  High     : CVE con CVSS >= 7.0, o secretos/claves hardcodeadas en código o
+             configuración que aún no se persisten en runtime, o configuración que
+             expone datos sensibles directamente.
+  Medium   : CVE con CVSS 4.0-6.9, o configuración mejorable sin impacto directo
+             inmediato.
+  Low      : Mala práctica sin impacto directo, hallazgo informativo.
+
+REGLAS:
+- Solo reporta hallazgos respaldados por los resultados de herramientas o el código
+  mostrados en esta conversación. No inventes hallazgos ni rellenes con suposiciones.
+- Un análisis con HALLAZGOS_JSON: [] (cero hallazgos) es un resultado válido y
+  correcto si no se detectó nada relevante.
+- Ante ambigüedad sobre la severidad de un hallazgo, clasifica de forma
+  conservadora (sube de nivel, no bajes)."""
+
+_OUTPUT_FORMAT_INSTRUCTIONS = _SEVERITY_CRITERIA + "\n\nTu respuesta final debe incluir, en este orden:\n" + (
     "1. Un análisis narrativo con resumen ejecutivo, hallazgos y recomendaciones.\n"
     '2. Una sección llamada exactamente "HALLAZGOS_JSON:" seguida de un bloque de código '
     '```json con un array de objetos, cada uno con las claves "title" (string), '
-    '"severity" (uno de "Critical", "High", "Medium", "Low" en inglés; usa "Low" para '
-    'hallazgos informativos), "evidence" (string breve) y "recommendation" (string). '
-    "Incluye solo problemas de seguridad reales, no estados positivos.\n"
+    '"severity" (uno de "Critical", "High", "Medium", "Low" en inglés, según los '
+    'CRITERIOS DE SEVERIDAD anteriores), "evidence" (string breve) y "recommendation" '
+    '(string). Incluye solo problemas de seguridad reales, no estados positivos.\n'
     '3. Una sección llamada exactamente "PRÓXIMOS PASOS:" seguida de una lista numerada '
     "(1. 2. 3. ...) con las acciones más urgentes a tomar, ordenadas por prioridad."
 )
