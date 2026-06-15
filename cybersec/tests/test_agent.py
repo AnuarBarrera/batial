@@ -536,3 +536,36 @@ def test_prefetch_handles_missing_read_code_snippet_tool():
     result = agent._prefetch_mandatory_files("/tmp/proyecto")
     assert "settings.py" in result
     assert "error al leer este archivo" in result
+
+
+def test_run_includes_prefetched_mandatory_files_in_initial_prompt():
+    list_tool = MagicMock()
+    list_tool.name = "list_code_files"
+    list_tool.execute.return_value = ToolResult(
+        content="/tmp/proyecto/core/tenant_management/services/auth_service.py",
+        tool_name="list_code_files", success=True,
+        metadata={"directory": "/tmp/proyecto", "count": 1},
+    )
+    read_tool = MagicMock()
+    read_tool.name = "read_code_snippet"
+    read_tool.execute.return_value = ToolResult(
+        content=(
+            "# /tmp/proyecto/core/tenant_management/services/auth_service.py\n"
+            "```python\n'password': password,\n```"
+        ),
+        tool_name="read_code_snippet", success=True,
+        metadata={
+            "file_path": "/tmp/proyecto/core/tenant_management/services/auth_service.py",
+            "lines": 1, "truncated": False,
+        },
+    )
+    adapter = _adapter(Message(role="assistant", content="Sistema seguro."))
+    agent = SecurityAgent(adapter=adapter, tool_registry={
+        "list_code_files": list_tool, "read_code_snippet": read_tool,
+    })
+    agent.run(ScanScope("localhost", code_directory="/tmp/proyecto"))
+
+    sent_messages = adapter.chat.call_args_list[0][0][0]
+    assert "ARCHIVOS DE SEGURIDAD OBLIGATORIOS" in sent_messages[0].content
+    assert "auth_service.py" in sent_messages[0].content
+    assert "'password': password," in sent_messages[0].content

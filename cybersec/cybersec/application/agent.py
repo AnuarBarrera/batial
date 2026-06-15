@@ -194,6 +194,9 @@ class SecurityAgent:
             code=scope.code_directory or "ninguno",
             hours=scope.time_range_hours,
         )
+        prefetch_text = self._prefetch_mandatory_files(scope.code_directory)
+        if prefetch_text:
+            initial += "\n\n" + prefetch_text
         messages: list[Message] = [Message(role="user", content=initial)]
         tools = get_tool_schemas()
 
