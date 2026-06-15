@@ -1,10 +1,19 @@
+import fnmatch
 import logging
+import os
 from typing import Callable, Optional
 from cybersec.domain.llm_adapter import LLMAdapter, Message
 from cybersec.domain.entities import ScanScope
 from cybersec.infrastructure.tools.registry import get_tool_schemas
 
 logger = logging.getLogger(__name__)
+
+MANDATORY_FILE_PATTERNS = [
+    "*settings*", "*config*",
+    "*auth*", "*login*", "*password*", "*credential*",
+    "docker-compose*", "Dockerfile*", "*.env*",
+    "*middleware*",
+]
 
 _SEVERITY_CRITERIA = """CRITERIOS DE SEVERIDAD — usa exactamente estas definiciones al clasificar:
   Critical : Explotable remotamente sin autenticación con evidencia de explotación
@@ -120,6 +129,58 @@ class SecurityAgent:
     def _trace(self, event: str, **fields) -> None:
         if self._tracer is not None:
             self._tracer.record(event, **fields)
+
+    def _prefetch_mandatory_files(self, code_directory: Optional[str]) -> str:
+        if code_directory is None:
+            return ""
+
+        list_tool = self._registry.get("list_code_files")
+        if list_tool is None:
+            return ""
+
+        list_result = list_tool.execute(directory=code_directory)
+        self._trace(
+            "tool_result", iteration=0, name="list_code_files",
+            args={"directory": code_directory}, success=list_result.success,
+            metadata=list_result.metadata, content_length=len(list_result.content),
+        )
+
+        if not list_result.success:
+            return ""
+
+        paths = []
+        for line in list_result.content.splitlines():
+            if not line.startswith("/"):
+                continue
+            basename = os.path.basename(line).lower()
+            if any(fnmatch.fnmatch(basename, pattern.lower()) for pattern in MANDATORY_FILE_PATTERNS):
+                paths.append(line)
+
+        if not paths:
+            return (
+                "ARCHIVOS DE SEGURIDAD OBLIGATORIOS (pre-fetch automático):\n\n"
+                "No se encontraron archivos que coincidan con los patrones de "
+                "seguridad obligatorios en este proyecto."
+            )
+
+        read_tool = self._registry.get("read_code_snippet")
+        sections = []
+        for path in paths:
+            if read_tool is None:
+                sections.append(f"# {path}\n(error al leer este archivo: herramienta read_code_snippet no disponible)")
+                continue
+            result = read_tool.execute(file_path=path)
+            self._trace(
+                "tool_result", iteration=0, name="read_code_snippet",
+                args={"file_path": path}, success=result.success,
+                metadata=result.metadata, content_length=len(result.content),
+            )
+            if result.success:
+                sections.append(result.content)
+            else:
+                sections.append(f"# {path}\n(error al leer este archivo: {result.content})")
+
+        return "ARCHIVOS DE SEGURIDAD OBLIGATORIOS (pre-fetch automático, ya leídos):\n\n" + "\n\n".join(sections)
 
     def run(self, scope: ScanScope, on_progress: Optional[Callable[[str], None]] = None) -> str:
         def notify(message: str) -> None:

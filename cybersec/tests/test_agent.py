@@ -378,3 +378,161 @@ def test_agent_traces_audit_result_on_failure():
     tracer = MagicMock()
     SecurityAgent(adapter=adapter, tool_registry={}, tracer=tracer).run(ScanScope("localhost"))
     tracer.record.assert_any_call("audit_result", success=False, report="Reporte inicial.")
+
+
+def test_prefetch_returns_empty_when_no_code_directory():
+    agent = SecurityAgent(adapter=_adapter(), tool_registry={})
+    assert agent._prefetch_mandatory_files(None) == ""
+
+
+def test_prefetch_returns_empty_when_list_code_files_tool_missing():
+    agent = SecurityAgent(adapter=_adapter(), tool_registry={})
+    assert agent._prefetch_mandatory_files("/tmp/proyecto") == ""
+
+
+def test_prefetch_filters_reads_and_traces_mandatory_files():
+    list_tool = MagicMock()
+    list_tool.name = "list_code_files"
+    list_tool.execute.return_value = ToolResult(
+        content="\n".join([
+            "/tmp/proyecto/saas_chatbot/settings.py",
+            "/tmp/proyecto/core/tenant_management/services/auth_service.py",
+            "/tmp/proyecto/core/auth_config.py",
+            "/tmp/proyecto/docker-compose.yml",
+            "/tmp/proyecto/core/views.py",
+        ]),
+        tool_name="list_code_files", success=True,
+        metadata={"directory": "/tmp/proyecto", "count": 5},
+    )
+
+    def fake_read(file_path="", **kwargs):
+        content = f"# {file_path}\n```python\n# contenido de {file_path}\n```"
+        return ToolResult(
+            content=content, tool_name="read_code_snippet", success=True,
+            metadata={"file_path": file_path, "lines": 1, "truncated": False},
+        )
+    read_tool = MagicMock()
+    read_tool.name = "read_code_snippet"
+    read_tool.execute.side_effect = fake_read
+
+    tracer = MagicMock()
+    agent = SecurityAgent(adapter=_adapter(), tool_registry={
+        "list_code_files": list_tool, "read_code_snippet": read_tool,
+    }, tracer=tracer)
+    result = agent._prefetch_mandatory_files("/tmp/proyecto")
+
+    assert "ARCHIVOS DE SEGURIDAD OBLIGATORIOS" in result
+    assert "settings.py" in result
+    assert "auth_service.py" in result
+    assert "auth_config.py" in result
+    assert "docker-compose.yml" in result
+    assert "core/views.py" not in result
+    assert read_tool.execute.call_count == 4
+
+    list_tool.execute.assert_called_once_with(directory="/tmp/proyecto")
+    list_content_length = len(list_tool.execute.return_value.content)
+    tracer.record.assert_any_call(
+        "tool_result", iteration=0, name="list_code_files",
+        args={"directory": "/tmp/proyecto"}, success=True,
+        metadata={"directory": "/tmp/proyecto", "count": 5},
+        content_length=list_content_length,
+    )
+    settings_content = (
+        "# /tmp/proyecto/saas_chatbot/settings.py\n"
+        "```python\n# contenido de /tmp/proyecto/saas_chatbot/settings.py\n```"
+    )
+    tracer.record.assert_any_call(
+        "tool_result", iteration=0, name="read_code_snippet",
+        args={"file_path": "/tmp/proyecto/saas_chatbot/settings.py"}, success=True,
+        metadata={"file_path": "/tmp/proyecto/saas_chatbot/settings.py", "lines": 1, "truncated": False},
+        content_length=len(settings_content),
+    )
+
+
+def test_prefetch_returns_empty_when_list_code_files_fails():
+    list_tool = MagicMock()
+    list_tool.name = "list_code_files"
+    list_tool.execute.return_value = ToolResult(
+        content="Directorio no existe: /tmp/proyecto",
+        tool_name="list_code_files", success=False,
+        error="Directorio no existe: /tmp/proyecto",
+    )
+    read_tool = MagicMock()
+    read_tool.name = "read_code_snippet"
+    tracer = MagicMock()
+    agent = SecurityAgent(adapter=_adapter(), tool_registry={
+        "list_code_files": list_tool, "read_code_snippet": read_tool,
+    }, tracer=tracer)
+    assert agent._prefetch_mandatory_files("/tmp/proyecto") == ""
+    read_tool.execute.assert_not_called()
+    tracer.record.assert_any_call(
+        "tool_result", iteration=0, name="list_code_files",
+        args={"directory": "/tmp/proyecto"}, success=False,
+        metadata={}, content_length=len("Directorio no existe: /tmp/proyecto"),
+    )
+
+
+def test_prefetch_returns_message_when_no_files_match():
+    list_tool = MagicMock()
+    list_tool.name = "list_code_files"
+    list_tool.execute.return_value = ToolResult(
+        content="/tmp/proyecto/core/views.py\n/tmp/proyecto/core/models.py",
+        tool_name="list_code_files", success=True,
+        metadata={"directory": "/tmp/proyecto", "count": 2},
+    )
+    agent = SecurityAgent(adapter=_adapter(), tool_registry={"list_code_files": list_tool})
+    result = agent._prefetch_mandatory_files("/tmp/proyecto")
+    assert "No se encontraron archivos" in result
+
+
+def test_prefetch_includes_error_line_when_read_code_snippet_fails():
+    list_tool = MagicMock()
+    list_tool.name = "list_code_files"
+    list_tool.execute.return_value = ToolResult(
+        content="\n".join([
+            "/tmp/proyecto/saas_chatbot/settings.py",
+            "/tmp/proyecto/core/tenant_management/services/auth_service.py",
+        ]),
+        tool_name="list_code_files", success=True,
+        metadata={"directory": "/tmp/proyecto", "count": 2},
+    )
+
+    def fake_read(file_path="", **kwargs):
+        if "auth_service" in file_path:
+            return ToolResult(
+                content=f"Archivo no existe: {file_path}",
+                tool_name="read_code_snippet", success=False,
+                error=f"Archivo no existe: {file_path}",
+            )
+        return ToolResult(
+            content=f"# {file_path}\n```python\nDEBUG = True\n```",
+            tool_name="read_code_snippet", success=True,
+            metadata={"file_path": file_path, "lines": 1, "truncated": False},
+        )
+    read_tool = MagicMock()
+    read_tool.name = "read_code_snippet"
+    read_tool.execute.side_effect = fake_read
+
+    agent = SecurityAgent(adapter=_adapter(), tool_registry={
+        "list_code_files": list_tool, "read_code_snippet": read_tool,
+    })
+    result = agent._prefetch_mandatory_files("/tmp/proyecto")
+
+    assert "settings.py" in result
+    assert "DEBUG = True" in result
+    assert "error al leer este archivo" in result
+    assert "auth_service.py" in result
+
+
+def test_prefetch_handles_missing_read_code_snippet_tool():
+    list_tool = MagicMock()
+    list_tool.name = "list_code_files"
+    list_tool.execute.return_value = ToolResult(
+        content="/tmp/proyecto/saas_chatbot/settings.py",
+        tool_name="list_code_files", success=True,
+        metadata={"directory": "/tmp/proyecto", "count": 1},
+    )
+    agent = SecurityAgent(adapter=_adapter(), tool_registry={"list_code_files": list_tool})
+    result = agent._prefetch_mandatory_files("/tmp/proyecto")
+    assert "settings.py" in result
+    assert "error al leer este archivo" in result
