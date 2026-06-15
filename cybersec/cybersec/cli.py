@@ -1,8 +1,13 @@
+from contextlib import nullcontext
+from datetime import datetime
+from pathlib import Path
+
 import click
 from cybersec import config
 from cybersec.domain.entities import ScanScope
 from cybersec.infrastructure.preconditions import check_preconditions
 from cybersec.infrastructure.tools.registry import get_registry
+from cybersec.infrastructure.tracing import RunTracer
 from cybersec.application.agent import SecurityAgent
 from cybersec.application.report import ReportGenerator, format_report_text
 
@@ -35,7 +40,9 @@ def cli():
 @click.option("--email", default=None, help="Email para recibir el reporte")
 @click.option("--adapter", default="gemini", type=click.Choice(["gemini", "openai"]),
               show_default=True, help="Adaptador LLM a usar")
-def scan(host, logs, code_dir, types, email, adapter):
+@click.option("--trace-dir", default=None,
+              help="Directorio donde guardar un trace JSONL de la corrida (diagnóstico)")
+def scan(host, logs, code_dir, types, email, adapter, trace_dir):
     """Ejecuta un análisis de seguridad en el sistema."""
     warnings = check_preconditions()
     for warning in warnings:
@@ -60,15 +67,23 @@ def scan(host, logs, code_dir, types, email, adapter):
     llm = _build_adapter(adapter)
     audit_llm = _build_adapter(adapter, model=config.GEMINI_AUDIT_MODEL, temperature=0.0) if adapter == "gemini" else None
     registry = get_registry()
-    agent = SecurityAgent(adapter=llm, tool_registry=registry, audit_adapter=audit_llm)
 
-    # Estimación de pasos: hasta max_iterations del loop + 1 paso de auditoría final.
-    # Si el agente termina antes, la barra se completa al 100% al finalizar.
-    total_steps = 11
-    with click.progressbar(length=total_steps, label="Analizando sistema",
-                            item_show_func=lambda step: step or "", show_eta=False) as bar:
-        analysis_text = agent.run(scope, on_progress=lambda step: bar.update(1, current_item=step))
-        bar.update(max(0, bar.length - bar.pos), current_item="Completado")
+    trace_cm = nullcontext()
+    if trace_dir:
+        Path(trace_dir).mkdir(parents=True, exist_ok=True)
+        trace_path = Path(trace_dir) / f"run-{datetime.now().strftime('%Y%m%dT%H%M%S')}.jsonl"
+        trace_cm = RunTracer(trace_path)
+
+    with trace_cm as tracer:
+        agent = SecurityAgent(adapter=llm, tool_registry=registry, audit_adapter=audit_llm, tracer=tracer)
+
+        # Estimación de pasos: hasta max_iterations del loop + 1 paso de auditoría final.
+        # Si el agente termina antes, la barra se completa al 100% al finalizar.
+        total_steps = 11
+        with click.progressbar(length=total_steps, label="Analizando sistema",
+                                item_show_func=lambda step: step or "", show_eta=False) as bar:
+            analysis_text = agent.run(scope, on_progress=lambda step: bar.update(1, current_item=step))
+            bar.update(max(0, bar.length - bar.pos), current_item="Completado")
 
     report = ReportGenerator().from_agent_output(agent_text=analysis_text, scope=scope)
     report_text = format_report_text(report)
