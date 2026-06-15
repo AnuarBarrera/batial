@@ -71,8 +71,9 @@ def scan(host, logs, code_dir, types, email, adapter, trace_dir):
     trace_cm = nullcontext()
     if trace_dir:
         Path(trace_dir).mkdir(parents=True, exist_ok=True)
-        trace_path = Path(trace_dir) / f"run-{datetime.now().strftime('%Y%m%dT%H%M%S')}.jsonl"
+        trace_path = Path(trace_dir) / f"run-{datetime.now().strftime('%Y%m%dT%H%M%S%f')}.jsonl"
         trace_cm = RunTracer(trace_path)
+        click.echo(f"Trace de diagnóstico: {trace_path}")
 
     with trace_cm as tracer:
         agent = SecurityAgent(adapter=llm, tool_registry=registry, audit_adapter=audit_llm, tracer=tracer)
