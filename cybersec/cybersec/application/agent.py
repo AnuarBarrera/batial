@@ -65,16 +65,14 @@ Si se especifica un directorio de código (distinto de "ninguno"):
    estático determinista (bandit) que detecta secretos hardcodeados, funciones
    peligrosas, criptografía débil y otros patrones inseguros. Incluye sus
    hallazgos en HALLAZGOS_JSON (ajusta la severidad si corresponde).
-2. Usa list_code_files para descubrir los archivos disponibles. De esa lista,
-   usa read_code_snippet para leer SIEMPRE, sin excepción y aunque ya creas
-   tener suficientes hallazgos, cualquier archivo cuyo nombre coincida con
-   estos patrones (son los puntos críticos de seguridad de cualquier proyecto):
-     - *settings*, *config* (configuración de la app)
-     - *auth*, *login*, *password*, *credential* (autenticación y credenciales)
-     - docker-compose*, Dockerfile*, *.env*, .env.example (infraestructura y secretos)
-     - *middleware* (seguridad de requests: CSP, rate limiting, headers)
-   Además, revisa cualquier otro archivo que consideres relevante desde el
-   punto de vista de seguridad (manejo de inputs, sesiones, permisos).
+2. A continuación se incluye el contenido de los archivos de seguridad
+   obligatorios del proyecto (settings, config, auth, login, password,
+   credential, docker-compose, Dockerfile, .env*, middleware), ya leídos
+   automáticamente — no necesitas volver a llamar a read_code_snippet sobre
+   ellos. Analiza su contenido como parte de tu evaluación de seguridad.
+   Además, usa list_code_files y read_code_snippet para revisar cualquier
+   otro archivo que consideres relevante desde el punto de vista de
+   seguridad (manejo de inputs, sesiones, permisos, lógica de negocio).
 Cuando hayas ejecutado scan_code_security, revisado los archivos obligatorios
 que existan en el directorio, y tengas suficientes hallazgos, genera un
 diagnóstico con severidad y recomendaciones concretas.
