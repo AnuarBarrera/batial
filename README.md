@@ -39,13 +39,51 @@ cybersec/
 │       ├── adapters/         # GeminiAdapter + OpenAICompatAdapter
 │       ├── tools/            # Las 7 herramientas de análisis
 │       └── notifiers/        # MailgunNotifier (email)
-├── tests/                    # 110 tests con pytest
+├── tests/                    # 145 tests con pytest
 ├── .env.example
 ├── requirements.txt
 └── pytest.ini
 ```
 
 **Principio clave:** el agente no conoce el proveedor de LLM — solo habla con `LLMAdapter`. Cambiar de Gemini a vLLM propio es cambiar una variable de entorno.
+
+---
+
+## Pre-fetch determinista de archivos de seguridad obligatorios
+
+El loop agéntico le da al LLM control sobre qué herramientas usa y en qué
+orden — pero eso introduce no-determinismo. En pruebas reales, el modelo
+ocasionalmente decidía **no** llamar a `read_code_snippet` sobre archivos
+críticos (autenticación, configuración, credenciales) aunque el prompt lo
+pidiera explícitamente, dejando hallazgos **Critical** (ej. contraseñas
+persistidas en texto plano) fuera del reporte final — de forma intermitente
+entre corridas, sin cambios en el código analizado.
+
+Para eliminar esa discrecionalidad, **antes** de que el LLM reciba su primer
+turno, `SecurityAgent._prefetch_mandatory_files()` ejecuta determinísticamente
+`list_code_files` + `read_code_snippet` sobre cualquier archivo del proyecto
+cuyo nombre coincida con estos patrones:
+
+```python
+MANDATORY_FILE_PATTERNS = [
+    "*settings*", "*config*",
+    "*auth*", "*login*", "*password*", "*credential*",
+    "docker-compose*", "Dockerfile*", "*.env*",
+    "*middleware*",
+]
+```
+
+El contenido de esos archivos se inyecta como texto plano al final del prompt
+inicial: el LLM lo recibe ya leído, sin depender de que decida pedirlo. El
+prompt le indica explícitamente que no necesita volver a llamar
+`read_code_snippet` sobre ellos, y que use las tools normalmente para explorar
+el resto del proyecto (inputs, sesiones, permisos, lógica de negocio).
+
+Cada lectura del pre-fetch se traza con `iteration=0` (mismo evento
+`tool_result` que usa el loop principal), distinguible de las iteraciones del
+LLM (`1..N`) en los `.jsonl` generados con `scan --trace-dir`. Validado en 3/3
+corridas reales: el archivo crítico aparece siempre con `iteration=0` y el
+hallazgo Critical correspondiente aparece siempre en el reporte final.
 
 ---
 
@@ -163,7 +201,7 @@ source venv/bin/activate
 pytest -v
 ```
 
-110 tests cubriendo domain, tools, adapters, agent loop y reporte.
+145 tests cubriendo domain, tools, adapters, agent loop y reporte.
 
 ---
 
@@ -202,8 +240,14 @@ sobre código fuente real (`list_code_files` + `read_code_snippet` + análisis
 estático determinista con `scan_code_security`/bandit), un paso de auditoría
 con un modelo más capaz (`GEMINI_AUDIT_MODEL`) que revisa el reporte contra la
 evidencia recopilada, y PRÓXIMOS PASOS poblados con acciones priorizadas.
-110/110 tests pasando.
+
+Se agregó además el [pre-fetch determinista de archivos de seguridad
+obligatorios](#pre-fetch-determinista-de-archivos-de-seguridad-obligatorios),
+que elimina la dependencia del juicio del LLM para cubrir archivos críticos
+(auth, config, credenciales). Validado en 3/3 corridas reales: el hallazgo
+Critical de contraseñas en texto plano aparece consistentemente en el reporte.
+145/145 tests pasando.
 
 Próximos pasos: pruebas adicionales contra otros repos y servidores para
-evaluar cobertura de hallazgos (con el nuevo paso de auditoría activo), y luego
-Fase 2 (remediación asistida) sobre un proyecto sin riesgo.
+evaluar cobertura de hallazgos, y luego Fase 2 (remediación asistida) sobre un
+proyecto sin riesgo.
