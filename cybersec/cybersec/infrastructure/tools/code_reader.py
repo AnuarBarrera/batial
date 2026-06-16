@@ -2,8 +2,8 @@ import os
 from pathlib import Path
 from cybersec.domain.tools import BaseTool, ToolResult
 
-MAX_LINES = 300
-MAX_FILES = 200
+MAX_LINES = 1000
+MAX_FILES = 500
 ALLOWED = {".py", ".js", ".ts", ".go", ".rb", ".php", ".java", ".sh",
            ".yaml", ".yml", ".env", ".conf", ".cfg", ".ini", ".toml"}
 # .env excluido del listado para no exponer secretos al LLM al enumerar archivos.

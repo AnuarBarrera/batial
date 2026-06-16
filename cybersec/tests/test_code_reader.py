@@ -19,7 +19,7 @@ def test_missing_file():
 
 def test_truncates_large_file(tmp_path):
     f = tmp_path / "big.py"
-    f.write_text("x = 1\n" * 500)
+    f.write_text("x = 1\n" * 1200)
     r = CodeReaderTool().execute(file_path=str(f))
     assert r.success is True
     assert r.metadata["truncated"] is True

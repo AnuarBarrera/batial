@@ -25,8 +25,8 @@ class PortScannerTool(BaseTool):
     def execute(self, host: str = "localhost", **kwargs) -> ToolResult:
         try:
             proc = subprocess.run(
-                ["nmap", "--top-ports", "100", "-T4", host],
-                capture_output=True, text=True, timeout=60,
+                ["nmap", "--top-ports", "1000", "-T4", host],
+                capture_output=True, text=True, timeout=120,
             )
         except FileNotFoundError:
             return self._error("nmap no instalado. Instala con: sudo apt install nmap")
@@ -40,13 +40,13 @@ class PortScannerTool(BaseTool):
         open_ports = [(int(p), svc) for p, svc in matches]
         sensitive = {p: SENSITIVE[p] for p, _ in open_ports if p in SENSITIVE}
 
-        lines = [f"Escaneo de puertos — {host} (top 100):"]
+        lines = [f"Escaneo de puertos — {host} (top 1000):"]
         for port, svc in open_ports:
             warn = SENSITIVE.get(port, "")
             lines.append(f"  {'⚠️ ' if warn else '  '}{port}/tcp  {svc}  {warn}")
 
         if not open_ports:
-            lines.append("  Sin puertos abiertos en top 100.")
+            lines.append("  Sin puertos abiertos en top 1000.")
 
         return ToolResult(
             content="\n".join(lines), tool_name=self.name, success=True,

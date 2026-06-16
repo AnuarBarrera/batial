@@ -15,7 +15,7 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "scan_ports",
-        "description": "Escanea los top 100 puertos TCP con nmap. Detecta puertos abiertos y servicios sensibles expuestos.",
+        "description": "Escanea los top 1000 puertos TCP con nmap. Detecta puertos abiertos y servicios sensibles expuestos.",
         "parameters": {
             "host": {"type": "string", "description": "IP o hostname a escanear (ej. localhost, 192.168.1.1)", "required": True},
         },
