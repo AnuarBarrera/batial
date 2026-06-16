@@ -41,7 +41,10 @@ _OUTPUT_FORMAT_INSTRUCTIONS = _SEVERITY_CRITERIA + "\n\nTu respuesta final debe 
     '```json con un array de objetos, cada uno con las claves "title" (string), '
     '"severity" (uno de "Critical", "High", "Medium", "Low" en inglés, según los '
     'CRITERIOS DE SEVERIDAD anteriores), "evidence" (string breve) y "recommendation" '
-    '(string). Incluye solo problemas de seguridad reales, no estados positivos.\n'
+    '(string). Incluye solo problemas de seguridad reales, no estados positivos. '
+    'Reporta TODOS los hallazgos que hayas identificado — no existe un número máximo. '
+    'Si encontraste 10 hallazgos, incluye los 10 ordenados de mayor a menor severidad. '
+    'No descartes un hallazgo porque ya tienes "suficientes".\n'
     '3. Una sección llamada exactamente "PRÓXIMOS PASOS:" seguida de una lista numerada '
     "(1. 2. 3. ...) con las acciones más urgentes a tomar, ordenadas por prioridad."
 )
@@ -109,6 +112,9 @@ Antes de responder, verifica punto por punto contra la evidencia disponible:
    Dockerfile, .env, middleware) que existan en el código analizado. Si el
    análisis se detuvo antes de hacerlo, complétalo con lo que puedas inferir
    de la evidencia disponible.
+4. Si se ejecutó check_dependencies y reportó CVEs con CVSS >= 7.0, confirma
+   que TODOS estén reflejados en HALLAZGOS_JSON con severidad High o Critical
+   según corresponda. Agrega los que falten.
 
 Si el reporte original ya cumple todo lo anterior, repítelo sin cambios.
 
