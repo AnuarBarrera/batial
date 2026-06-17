@@ -13,7 +13,15 @@ from cybersec.application.report import ReportGenerator, format_report_text
 
 
 def _build_adapter(adapter_name: str, model: str = None, temperature: float = None):
-    if adapter_name == "vertex":
+    if adapter_name == "anthropic-vertex":
+        from cybersec.infrastructure.adapters.anthropic_vertex import AnthropicVertexAdapter
+        return AnthropicVertexAdapter(
+            model=model or config.ANTHROPIC_VERTEX_MODEL,
+            project=config.ANTHROPIC_VERTEX_PROJECT,
+            region=config.ANTHROPIC_VERTEX_REGION,
+            temperature=temperature,
+        )
+    elif adapter_name == "vertex":
         from cybersec.infrastructure.adapters.gemini import GeminiAdapter
         return GeminiAdapter(
             model=model or config.GEMINI_VERTEX_MODEL,
@@ -46,11 +54,14 @@ def cli():
               type=click.Choice(["network", "logs", "deps", "code", "config"]),
               help="Tipo de análisis (repetible). Default: todos.")
 @click.option("--email", default=None, help="Email para recibir el reporte")
-@click.option("--adapter", default="gemini", type=click.Choice(["gemini", "openai", "vertex"]),
-              show_default=True, help="Adaptador LLM a usar (vertex usa ADC del servidor)")
+@click.option("--adapter", default="gemini",
+              type=click.Choice(["gemini", "openai", "vertex", "anthropic-vertex"]),
+              show_default=True, help="Adaptador LLM a usar")
+@click.option("--model", default=None,
+              help="Modelo a usar (override del configurado por defecto, ej: claude-opus-4-8, gemini-2.5-pro)")
 @click.option("--trace-dir", default=None,
               help="Directorio donde guardar un trace JSONL de la corrida (diagnóstico)")
-def scan(host, logs, code_dir, types, email, adapter, trace_dir):
+def scan(host, logs, code_dir, types, email, adapter, model, trace_dir):
     """Ejecuta un análisis de seguridad en el sistema."""
     warnings = check_preconditions()
     for warning in warnings:
@@ -72,11 +83,13 @@ def scan(host, logs, code_dir, types, email, adapter, trace_dir):
         click.echo(f"   Logs: {', '.join(logs)}")
     click.echo()
 
-    llm = _build_adapter(adapter)
+    llm = _build_adapter(adapter, model=model)
     if adapter == "gemini":
         audit_llm = _build_adapter("gemini", model=config.GEMINI_AUDIT_MODEL, temperature=0.0)
     elif adapter == "vertex":
         audit_llm = _build_adapter("vertex", model=config.GEMINI_VERTEX_AUDIT_MODEL, temperature=0.0)
+    elif adapter == "anthropic-vertex":
+        audit_llm = _build_adapter("anthropic-vertex", model=config.ANTHROPIC_VERTEX_AUDIT_MODEL, temperature=0.0)
     else:
         audit_llm = None
     registry = get_registry()

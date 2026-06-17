@@ -192,7 +192,110 @@ def test_gemini_chat_omits_temperature_by_default(mock_genai):
     assert config.temperature is None
 
 
+from cybersec.infrastructure.adapters.anthropic_vertex import AnthropicVertexAdapter, _to_anthropic_tool
 from cybersec.infrastructure.adapters.openai_compat import OpenAICompatAdapter
+
+def test_anthropic_vertex_implements_llm_adapter():
+    assert issubclass(AnthropicVertexAdapter, LLMAdapter)
+
+def test_anthropic_vertex_supports_tools():
+    assert AnthropicVertexAdapter().supports_tools() is True
+
+def test_to_anthropic_tool_converts_schema():
+    spec = {
+        "name": "scan_ports",
+        "description": "Escanea puertos",
+        "parameters": {
+            "host": {"type": "string", "description": "Host objetivo", "required": True},
+        }
+    }
+    result = _to_anthropic_tool(spec)
+    assert result["name"] == "scan_ports"
+    assert result["input_schema"]["properties"]["host"]["type"] == "string"
+    assert "host" in result["input_schema"]["required"]
+
+@patch("cybersec.infrastructure.adapters.anthropic_vertex.AnthropicVertex")
+def test_anthropic_vertex_returns_text(mock_av):
+    mock_client = MagicMock()
+    mock_av.return_value = mock_client
+    mock_block = MagicMock(type="text", text="Sistema analizado.")
+    mock_resp = MagicMock(content=[mock_block])
+    mock_client.messages.create.return_value = mock_resp
+
+    result = AnthropicVertexAdapter().chat([Message(role="user", content="analiza")])
+
+    assert result.role == "assistant"
+    assert result.content == "Sistema analizado."
+    assert result.tool_calls is None
+
+@patch("cybersec.infrastructure.adapters.anthropic_vertex.AnthropicVertex")
+def test_anthropic_vertex_returns_tool_call(mock_av):
+    mock_client = MagicMock()
+    mock_av.return_value = mock_client
+    mock_block = MagicMock(type="tool_use", input={"host": "localhost"}, id="toolu_abc")
+    mock_block.name = "scan_ports"
+    mock_resp = MagicMock(content=[mock_block])
+    mock_client.messages.create.return_value = mock_resp
+
+    tools = [{"name": "scan_ports", "description": "Escanea puertos", "parameters": {
+        "host": {"type": "string", "description": "Host objetivo"}
+    }}]
+    result = AnthropicVertexAdapter().chat([Message(role="user", content="escanea")], tools=tools)
+
+    assert result.tool_calls is not None
+    assert result.tool_calls[0]["name"] == "scan_ports"
+    assert result.tool_calls[0]["args"] == {"host": "localhost"}
+    assert result.tool_calls[0]["id"] == "toolu_abc"
+
+@patch("cybersec.infrastructure.adapters.anthropic_vertex.AnthropicVertex")
+def test_anthropic_vertex_forces_tool_on_first_message(mock_av):
+    mock_client = MagicMock()
+    mock_av.return_value = mock_client
+    mock_block = MagicMock(type="tool_use", input={}, id="toolu_1")
+    mock_block.name = "scan_ports"
+    mock_resp = MagicMock(content=[mock_block])
+    mock_client.messages.create.return_value = mock_resp
+
+    tools = [{"name": "scan_ports", "description": "...", "parameters": {}}]
+    AnthropicVertexAdapter().chat([Message(role="user", content="escanea")], tools=tools)
+
+    kwargs = mock_client.messages.create.call_args.kwargs
+    assert kwargs.get("tool_choice") == {"type": "any"}
+
+@patch("cybersec.infrastructure.adapters.anthropic_vertex.AnthropicVertex")
+def test_anthropic_vertex_replays_tool_id_in_result(mock_av):
+    mock_client = MagicMock()
+    mock_av.return_value = mock_client
+    mock_block = MagicMock(type="text", text="Diagnóstico.")
+    mock_resp = MagicMock(content=[mock_block])
+    mock_client.messages.create.return_value = mock_resp
+
+    messages = [
+        Message(role="user", content="analiza"),
+        Message(role="assistant", content="", tool_calls=[
+            {"name": "scan_ports", "args": {"host": "localhost"}, "id": "toolu_xyz"}
+        ]),
+        Message(role="tool", content="", tool_results=[{"name": "scan_ports", "content": "22/tcp open"}]),
+    ]
+    AnthropicVertexAdapter().chat(messages)
+
+    contents = mock_client.messages.create.call_args.kwargs["messages"]
+    tool_result_msg = contents[-1]
+    assert tool_result_msg["role"] == "user"
+    assert tool_result_msg["content"][0]["tool_use_id"] == "toolu_xyz"
+
+@patch("cybersec.infrastructure.adapters.anthropic_vertex.AnthropicVertex")
+def test_anthropic_vertex_passes_temperature(mock_av):
+    mock_client = MagicMock()
+    mock_av.return_value = mock_client
+    mock_block = MagicMock(type="text", text="ok")
+    mock_resp = MagicMock(content=[mock_block])
+    mock_client.messages.create.return_value = mock_resp
+
+    AnthropicVertexAdapter(temperature=0.0).chat([Message(role="user", content="analiza")])
+
+    kwargs = mock_client.messages.create.call_args.kwargs
+    assert kwargs["temperature"] == 0.0
 
 def test_openai_compat_implements_llm_adapter():
     assert issubclass(OpenAICompatAdapter, LLMAdapter)
