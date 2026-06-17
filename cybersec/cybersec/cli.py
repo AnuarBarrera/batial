@@ -13,7 +13,15 @@ from cybersec.application.report import ReportGenerator, format_report_text
 
 
 def _build_adapter(adapter_name: str, model: str = None, temperature: float = None):
-    if adapter_name == "gemini":
+    if adapter_name == "vertex":
+        from cybersec.infrastructure.adapters.gemini import GeminiAdapter
+        return GeminiAdapter(
+            model=model or config.GEMINI_VERTEX_MODEL,
+            temperature=temperature,
+            project=config.GOOGLE_CLOUD_PROJECT,
+            location=config.GOOGLE_CLOUD_LOCATION,
+        )
+    elif adapter_name == "gemini":
         from cybersec.infrastructure.adapters.gemini import GeminiAdapter
         if not config.GEMINI_API_KEY:
             raise click.UsageError("GEMINI_API_KEY no configurada en .env")
@@ -38,8 +46,8 @@ def cli():
               type=click.Choice(["network", "logs", "deps", "code", "config"]),
               help="Tipo de análisis (repetible). Default: todos.")
 @click.option("--email", default=None, help="Email para recibir el reporte")
-@click.option("--adapter", default="gemini", type=click.Choice(["gemini", "openai"]),
-              show_default=True, help="Adaptador LLM a usar")
+@click.option("--adapter", default="gemini", type=click.Choice(["gemini", "openai", "vertex"]),
+              show_default=True, help="Adaptador LLM a usar (vertex usa ADC del servidor)")
 @click.option("--trace-dir", default=None,
               help="Directorio donde guardar un trace JSONL de la corrida (diagnóstico)")
 def scan(host, logs, code_dir, types, email, adapter, trace_dir):
@@ -65,7 +73,12 @@ def scan(host, logs, code_dir, types, email, adapter, trace_dir):
     click.echo()
 
     llm = _build_adapter(adapter)
-    audit_llm = _build_adapter(adapter, model=config.GEMINI_AUDIT_MODEL, temperature=0.0) if adapter == "gemini" else None
+    if adapter == "gemini":
+        audit_llm = _build_adapter("gemini", model=config.GEMINI_AUDIT_MODEL, temperature=0.0)
+    elif adapter == "vertex":
+        audit_llm = _build_adapter("vertex", model=config.GEMINI_VERTEX_AUDIT_MODEL, temperature=0.0)
+    else:
+        audit_llm = None
     registry = get_registry()
 
     trace_cm = nullcontext()

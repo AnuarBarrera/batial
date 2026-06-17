@@ -31,16 +31,24 @@ def _to_fn_declaration(spec: dict) -> types.FunctionDeclaration:
 
 
 class GeminiAdapter(LLMAdapter):
-    def __init__(self, api_key: str, model: str = "gemini-3.1-flash-lite", temperature: float = None):
+    def __init__(self, api_key: str = "", model: str = "gemini-3.1-flash-lite",
+                 temperature: float = None, project: str = "", location: str = "us-west4"):
         self._api_key = api_key
         self._model = model
         self._temperature = temperature
+        self._project = project
+        self._location = location
+
+    def _client(self) -> genai.Client:
+        if self._project:
+            return genai.Client(vertexai=True, project=self._project, location=self._location)
+        return genai.Client(api_key=self._api_key)
 
     def supports_tools(self) -> bool:
         return True
 
     def chat(self, messages: list[Message], tools: list = None) -> Message:
-        client = genai.Client(api_key=self._api_key)
+        client = self._client()
         contents = []
 
         for m in messages:
