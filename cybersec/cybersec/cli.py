@@ -59,9 +59,11 @@ def cli():
               show_default=True, help="Adaptador LLM a usar")
 @click.option("--model", default=None,
               help="Modelo a usar (override del configurado por defecto, ej: claude-opus-4-8, gemini-2.5-pro)")
+@click.option("--audit-model", default=None,
+              help="Modelo para el paso de auditoría (override). Default: mismo adaptador con modelo de config)")
 @click.option("--trace-dir", default=None,
               help="Directorio donde guardar un trace JSONL de la corrida (diagnóstico)")
-def scan(host, logs, code_dir, types, email, adapter, model, trace_dir):
+def scan(host, logs, code_dir, types, email, adapter, model, audit_model, trace_dir):
     """Ejecuta un análisis de seguridad en el sistema."""
     warnings = check_preconditions()
     for warning in warnings:
@@ -85,11 +87,11 @@ def scan(host, logs, code_dir, types, email, adapter, model, trace_dir):
 
     llm = _build_adapter(adapter, model=model)
     if adapter == "gemini":
-        audit_llm = _build_adapter("gemini", model=config.GEMINI_AUDIT_MODEL, temperature=0.0)
+        audit_llm = _build_adapter("gemini", model=audit_model or config.GEMINI_AUDIT_MODEL, temperature=0.0)
     elif adapter == "vertex":
-        audit_llm = _build_adapter("vertex", model=config.GEMINI_VERTEX_AUDIT_MODEL, temperature=0.0)
+        audit_llm = _build_adapter("vertex", model=audit_model or config.GEMINI_VERTEX_AUDIT_MODEL, temperature=0.0)
     elif adapter == "anthropic-vertex":
-        audit_llm = _build_adapter("anthropic-vertex", model=config.ANTHROPIC_VERTEX_AUDIT_MODEL, temperature=0.0)
+        audit_llm = _build_adapter("anthropic-vertex", model=audit_model or config.ANTHROPIC_VERTEX_AUDIT_MODEL, temperature=0.0)
     else:
         audit_llm = None
     registry = get_registry()
