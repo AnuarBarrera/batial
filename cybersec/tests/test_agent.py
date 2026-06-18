@@ -83,7 +83,7 @@ def test_initial_prompt_instructs_immediate_tool_use():
     SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost"))
     sent_messages = adapter.chat.call_args[0][0]
     content = sent_messages[0].content.lower()
-    assert "no describas un plan" in content
+    assert "sin describir planes" in content
     assert "actúa de inmediato" in content
 
 
