@@ -3,7 +3,7 @@ import random
 import time
 from google import genai
 from google.genai import types, errors as genai_errors
-from cybersec.domain.llm_adapter import LLMAdapter, Message
+from cybersec.domain.llm_adapter import LLMAdapter, Message, TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +105,13 @@ class GeminiAdapter(LLMAdapter):
                 else:
                     raise
 
+        usage = None
+        if response.usage_metadata:
+            usage = TokenUsage(
+                input_tokens=response.usage_metadata.prompt_token_count or 0,
+                output_tokens=response.usage_metadata.candidates_token_count or 0,
+            )
+
         if response.function_calls:
             tool_calls = []
             for part in response.candidates[0].content.parts:
@@ -113,5 +120,5 @@ class GeminiAdapter(LLMAdapter):
                     if part.thought_signature is not None:
                         tc["thought_signature"] = part.thought_signature
                     tool_calls.append(tc)
-            return Message(role="assistant", content="", tool_calls=tool_calls)
-        return Message(role="assistant", content=response.text or "")
+            return Message(role="assistant", content="", tool_calls=tool_calls, token_usage=usage)
+        return Message(role="assistant", content=response.text or "", token_usage=usage)

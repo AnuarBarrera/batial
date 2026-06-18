@@ -12,6 +12,38 @@ from cybersec.application.agent import SecurityAgent
 from cybersec.application.report import ReportGenerator, format_report_text
 
 
+_COST_PER_1M = {
+    "gemini-2.5-flash":      {"input": 0.075,  "output": 0.30},
+    "gemini-2.5-pro":        {"input": 1.25,   "output": 10.00},
+    "claude-haiku-4-5":      {"input": 0.80,   "output": 4.00},
+    "claude-sonnet-4-5":     {"input": 3.00,   "output": 15.00},
+    "claude-sonnet-4-6":     {"input": 3.00,   "output": 15.00},
+    "claude-opus-4-8":       {"input": 15.00,  "output": 75.00},
+}
+
+def _print_token_summary(usage, adapter: str, model: str | None) -> None:
+    if not usage or usage.total == 0:
+        return
+    effective_model = model or {"vertex": "gemini-2.5-flash", "gemini": "gemini-3.1-flash-lite",
+                                 "anthropic-vertex": "claude-sonnet-4-5"}.get(adapter, "")
+    click.echo("\n" + "─" * 60)
+    click.echo(f"Tokens utilizados: {usage.input_tokens:,} entrada / {usage.output_tokens:,} salida "
+               f"(total: {usage.total:,})")
+    prices = _COST_PER_1M.get(effective_model)
+    if prices:
+        cost = (usage.input_tokens * prices["input"] + usage.output_tokens * prices["output"]) / 1_000_000
+        click.echo(f"Costo estimado ({effective_model}): ${cost:.4f} USD")
+    else:
+        comparisons = []
+        for m, p in _COST_PER_1M.items():
+            c = (usage.input_tokens * p["input"] + usage.output_tokens * p["output"]) / 1_000_000
+            comparisons.append(f"{m}: ${c:.4f}")
+        click.echo("Costo estimado por modelo:")
+        for line in comparisons:
+            click.echo(f"  {line}")
+    click.echo("─" * 60)
+
+
 def _build_adapter(adapter_name: str, model: str = None, temperature: float = None, location: str = None):
     if adapter_name == "anthropic-vertex":
         from cybersec.infrastructure.adapters.anthropic_vertex import AnthropicVertexAdapter
@@ -113,12 +145,14 @@ def scan(host, logs, code_dir, types, email, adapter, model, audit_model, locati
         total_steps = 11
         with click.progressbar(length=total_steps, label="Analizando sistema",
                                 item_show_func=lambda step: step or "", show_eta=False) as bar:
-            analysis_text = agent.run(scope, on_progress=lambda step: bar.update(1, current_item=step))
+            analysis_text, token_usage = agent.run(scope, on_progress=lambda step: bar.update(1, current_item=step))
             bar.update(max(0, bar.length - bar.pos), current_item="Completado")
 
     report = ReportGenerator().from_agent_output(agent_text=analysis_text, scope=scope)
     report_text = format_report_text(report)
     click.echo("\n" + report_text)
+
+    _print_token_summary(token_usage, adapter, model)
 
     if email:
         from cybersec.infrastructure.notifiers.email import MailgunNotifier

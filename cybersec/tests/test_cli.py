@@ -40,8 +40,10 @@ def test_scan_creates_trace_file_when_trace_dir_given(
     mock_agent_cls, mock_build_adapter, mock_get_registry, mock_check, tmp_path
 ):
     mock_agent = MagicMock()
+    from cybersec.domain.llm_adapter import TokenUsage
     mock_agent.run.return_value = (
-        "Reporte.\nHALLAZGOS_JSON:\n```json\n[]\n```\nPRÓXIMOS PASOS:\n1. Nada."
+        "Reporte.\nHALLAZGOS_JSON:\n```json\n[]\n```\nPRÓXIMOS PASOS:\n1. Nada.",
+        TokenUsage(),
     )
     mock_agent_cls.return_value = mock_agent
 
@@ -63,8 +65,10 @@ def test_scan_does_not_create_trace_file_by_default(
     mock_agent_cls, mock_build_adapter, mock_get_registry, mock_check, tmp_path
 ):
     mock_agent = MagicMock()
+    from cybersec.domain.llm_adapter import TokenUsage
     mock_agent.run.return_value = (
-        "Reporte.\nHALLAZGOS_JSON:\n```json\n[]\n```\nPRÓXIMOS PASOS:\n1. Nada."
+        "Reporte.\nHALLAZGOS_JSON:\n```json\n[]\n```\nPRÓXIMOS PASOS:\n1. Nada.",
+        TokenUsage(),
     )
     mock_agent_cls.return_value = mock_agent
 

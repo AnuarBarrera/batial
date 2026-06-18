@@ -5,7 +5,7 @@ import time
 import anthropic
 from anthropic import AnthropicVertex
 
-from cybersec.domain.llm_adapter import LLMAdapter, Message
+from cybersec.domain.llm_adapter import LLMAdapter, Message, TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +111,11 @@ class AnthropicVertexAdapter(LLMAdapter):
                 else:
                     raise
 
+        usage = TokenUsage(
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+        )
+
         tool_calls = []
         text_parts = []
         for block in response.content:
@@ -120,5 +125,5 @@ class AnthropicVertexAdapter(LLMAdapter):
                 text_parts.append(block.text)
 
         if tool_calls:
-            return Message(role="assistant", content="", tool_calls=tool_calls)
-        return Message(role="assistant", content="".join(text_parts))
+            return Message(role="assistant", content="", tool_calls=tool_calls, token_usage=usage)
+        return Message(role="assistant", content="".join(text_parts), token_usage=usage)

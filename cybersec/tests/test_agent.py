@@ -19,7 +19,7 @@ def _tool(name, content="ok"):
 
 def test_agent_returns_text_on_first_response():
     adapter = _adapter(Message(role="assistant", content="Sistema seguro."))
-    result = SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost"))
+    result, _ = SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost"))
     assert "Sistema seguro" in result
     assert adapter.chat.call_count == 2
 
@@ -30,7 +30,7 @@ def test_agent_calls_tool_then_responds():
     )
     tool = _tool("check_configs", "PermitRootLogin yes")
     agent = SecurityAgent(adapter=adapter, tool_registry={"check_configs": tool})
-    result = agent.run(ScanScope("localhost"))
+    result, _ = agent.run(ScanScope("localhost"))
     assert "2 problemas" in result
     tool.execute.assert_called_once()
     assert adapter.chat.call_count == 3
@@ -49,7 +49,7 @@ def test_agent_handles_unknown_tool_gracefully():
         Message(role="assistant", content="", tool_calls=[{"name": "ghost_tool", "args": {}}]),
         Message(role="assistant", content="Análisis completado."),
     )
-    result = SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost"))
+    result, _ = SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost"))
     assert "completado" in result
 
 
@@ -131,7 +131,7 @@ def test_agent_runs_audit_pass_with_report_as_context():
         content='Reporte auditado.\nHALLAZGOS_JSON:\n```json\n[]\n```\nPRÓXIMOS PASOS:\n1. Nada.',
     )
     adapter = _adapter(first_response, audit_response)
-    result = SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost"))
+    result, _ = SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost"))
     assert adapter.chat.call_count == 2
     audit_messages = adapter.chat.call_args[0][0]
     assert "Sistema seguro" in audit_messages[-1].content
@@ -160,7 +160,7 @@ def test_audit_call_does_not_pass_tools():
 def test_audit_falls_back_to_original_report_on_failure():
     first_response = Message(role="assistant", content="Reporte inicial.")
     adapter = _adapter(first_response, RuntimeError("auditor no disponible"))
-    result = SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost"))
+    result, _ = SecurityAgent(adapter=adapter, tool_registry={}).run(ScanScope("localhost"))
     assert result == "Reporte inicial."
 
 
@@ -169,7 +169,7 @@ def test_agent_uses_audit_adapter_when_provided():
     audit_response = Message(role="assistant", content="Reporte auditado por modelo fuerte.")
     main_adapter = _adapter(first_response)
     audit_adapter = _adapter(audit_response)
-    result = SecurityAgent(
+    result, _ = SecurityAgent(
         adapter=main_adapter, tool_registry={}, audit_adapter=audit_adapter
     ).run(ScanScope("localhost"))
     main_adapter.chat.assert_called_once()
@@ -369,7 +369,8 @@ def test_agent_traces_audit_result_on_success():
     adapter = _adapter(first_response, audit_response)
     tracer = MagicMock()
     SecurityAgent(adapter=adapter, tool_registry={}, tracer=tracer).run(ScanScope("localhost"))
-    tracer.record.assert_any_call("audit_result", success=True, report="Reporte auditado.")
+    calls = [str(c) for c in tracer.record.call_args_list]
+    assert any("audit_result" in c and "success=True" in c and "Reporte auditado." in c for c in calls)
 
 
 def test_agent_traces_audit_result_on_failure():
@@ -377,7 +378,8 @@ def test_agent_traces_audit_result_on_failure():
     adapter = _adapter(first_response, RuntimeError("auditor no disponible"))
     tracer = MagicMock()
     SecurityAgent(adapter=adapter, tool_registry={}, tracer=tracer).run(ScanScope("localhost"))
-    tracer.record.assert_any_call("audit_result", success=False, report="Reporte inicial.")
+    calls = [str(c) for c in tracer.record.call_args_list]
+    assert any("audit_result" in c and "success=False" in c and "Reporte inicial." in c for c in calls)
 
 
 def test_prefetch_returns_empty_when_no_code_directory():

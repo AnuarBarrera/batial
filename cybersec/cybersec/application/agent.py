@@ -2,7 +2,7 @@ import fnmatch
 import logging
 import os
 from typing import Callable, Optional
-from cybersec.domain.llm_adapter import LLMAdapter, Message
+from cybersec.domain.llm_adapter import LLMAdapter, Message, TokenUsage
 from cybersec.domain.entities import ScanScope
 from cybersec.infrastructure.tools.registry import get_tool_schemas
 
@@ -186,7 +186,7 @@ class SecurityAgent:
 
         return "ARCHIVOS DE SEGURIDAD OBLIGATORIOS (pre-fetch automático, ya leídos):\n\n" + "\n\n".join(sections)
 
-    def run(self, scope: ScanScope, on_progress: Optional[Callable[[str], None]] = None) -> str:
+    def run(self, scope: ScanScope, on_progress: Optional[Callable[[str], None]] = None) -> tuple[str, TokenUsage]:
         def notify(message: str) -> None:
             if on_progress:
                 on_progress(message)
@@ -213,9 +213,13 @@ class SecurityAgent:
             max_iterations=self._max_iterations,
         )
 
+        total_usage = TokenUsage()
+
         for i in range(self._max_iterations):
             notify(f"Analizando (paso {i + 1}/{self._max_iterations})...")
             response = self._adapter.chat(messages, tools=tools)
+            if response.token_usage:
+                total_usage = total_usage + response.token_usage
 
             tool_calls_summary = [
                 {"name": tc["name"], "args": tc.get("args", {})}
@@ -232,7 +236,7 @@ class SecurityAgent:
             if not response.tool_calls:
                 report = response.content or "(sin respuesta)"
                 self._trace("loop_end", reason="no_tool_calls", iteration=i + 1)
-                return self._audit(messages, response, report, notify)
+                return self._audit(messages, response, report, notify, total_usage)
 
             messages.append(response)
             tool_results = []
@@ -272,12 +276,15 @@ class SecurityAgent:
         notify("Generando reporte final...")
         messages.append(Message(role="user", content=_FINAL_REPORT_PROMPT))
         final = self._adapter.chat(messages)
+        if final.token_usage:
+            total_usage = total_usage + final.token_usage
         report = final.content or "(análisis incompleto)"
-        return self._audit(messages, final, report, notify)
+        return self._audit(messages, final, report, notify, total_usage)
 
     def _audit(self, messages: list[Message], last_response: Message, report: str,
-               notify: Callable[[str], None]) -> str:
+               notify: Callable[[str], None], total_usage: TokenUsage = None) -> tuple[str, TokenUsage]:
         notify("Auditando el reporte...")
+        usage = total_usage or TokenUsage()
         audit_messages = messages + [
             last_response,
             Message(role="user", content=_AUDIT_PROMPT.format(report=report)),
@@ -285,10 +292,14 @@ class SecurityAgent:
         adapter = self._audit_adapter or self._adapter
         try:
             audit_response = adapter.chat(audit_messages)
+            if audit_response.token_usage:
+                usage = usage + audit_response.token_usage
             result = audit_response.content or report
-            self._trace("audit_result", success=True, report=result)
-            return result
+            self._trace("audit_result", success=True, report=result,
+                        input_tokens=usage.input_tokens, output_tokens=usage.output_tokens)
+            return result, usage
         except Exception:
             logger.exception("Error en la auditoría del reporte, se conserva el original")
-            self._trace("audit_result", success=False, report=report)
-            return report
+            self._trace("audit_result", success=False, report=report,
+                        input_tokens=usage.input_tokens, output_tokens=usage.output_tokens)
+            return report, usage
