@@ -200,6 +200,34 @@ def test_agent_reports_progress_with_tool_name_when_executing_tool():
     assert any("check_configs" in m for m in progress)
 
 
+def test_on_iteration_called_with_tool_calls_each_loop():
+    adapter = _adapter(
+        Message(role="assistant", content="", tool_calls=[{"name": "scan_ports", "args": {"host": "localhost"}}]),
+        Message(role="assistant", content="Listo."),
+        Message(role="assistant", content="Auditado."),
+    )
+    tool = _tool("scan_ports", "22/tcp open")
+    iterations = []
+    SecurityAgent(adapter=adapter, tool_registry={"scan_ports": tool}).run(
+        ScanScope("localhost"), on_iteration=lambda num, calls: iterations.append((num, calls))
+    )
+    assert len(iterations) == 2
+    assert iterations[0] == (1, [{"name": "scan_ports", "args": {"host": "localhost"}}])
+    assert iterations[1] == (2, [])
+
+
+def test_on_iteration_called_with_empty_list_when_no_tool_calls():
+    adapter = _adapter(
+        Message(role="assistant", content="Reporte directo."),
+        Message(role="assistant", content="Auditado."),
+    )
+    iterations = []
+    SecurityAgent(adapter=adapter, tool_registry={}).run(
+        ScanScope("localhost"), on_iteration=lambda num, calls: iterations.append((num, calls))
+    )
+    assert iterations == [(1, [])]
+
+
 def test_agent_reports_progress_before_audit_pass():
     adapter = _adapter(
         Message(role="assistant", content="Reporte inicial."),

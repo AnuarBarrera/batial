@@ -201,7 +201,8 @@ class SecurityAgent:
 
         return "ARCHIVOS DE SEGURIDAD OBLIGATORIOS (pre-fetch automático, ya leídos):\n\n" + "\n\n".join(sections)
 
-    def run(self, scope: ScanScope, on_progress: Optional[Callable[[str], None]] = None) -> tuple[str, TokenUsage]:
+    def run(self, scope: ScanScope, on_progress: Optional[Callable[[str], None]] = None,
+            on_iteration: Optional[Callable[[int, list[dict]], None]] = None) -> tuple[str, TokenUsage]:
         def notify(message: str) -> None:
             if on_progress:
                 on_progress(message)
@@ -249,9 +250,14 @@ class SecurityAgent:
             )
 
             if not response.tool_calls:
+                if on_iteration:
+                    on_iteration(i + 1, [])
                 report = response.content or "(sin respuesta)"
                 self._trace("loop_end", reason="no_tool_calls", iteration=i + 1)
                 return self._audit(messages, response, report, notify, total_usage)
+
+            if on_iteration:
+                on_iteration(i + 1, tool_calls_summary)
 
             messages.append(response)
             tool_results = []

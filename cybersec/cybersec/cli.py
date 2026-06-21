@@ -99,7 +99,9 @@ def cli():
               help="Directorio donde guardar un trace JSONL de la corrida (diagnóstico)")
 @click.option("--max-iterations", default=None, type=int,
               help="Límite de iteraciones del agente (default: 15). Sube para análisis más exhaustivos.")
-def scan(host, logs, code_dir, types, email, adapter, model, audit_model, location, trace_dir, max_iterations):
+@click.option("--verbose", is_flag=True, default=False,
+              help="Muestra herramientas llamadas en cada iteración en lugar de la barra de progreso.")
+def scan(host, logs, code_dir, types, email, adapter, model, audit_model, location, trace_dir, max_iterations, verbose):
     """Ejecuta un análisis de seguridad en el sistema."""
     warnings = check_preconditions()
     for warning in warnings:
@@ -140,16 +142,39 @@ def scan(host, logs, code_dir, types, email, adapter, model, audit_model, locati
         click.echo(f"Trace de diagnóstico: {trace_path}")
 
     with trace_cm as tracer:
+        effective_max = max_iterations or 15
         agent = SecurityAgent(
             adapter=llm, tool_registry=registry, audit_adapter=audit_llm, tracer=tracer,
             **({"max_iterations": max_iterations} if max_iterations is not None else {}),
         )
 
-        total_steps = (max_iterations or 15) + 1
-        with click.progressbar(length=total_steps, label="Analizando sistema",
-                                item_show_func=lambda step: step or "", show_eta=False) as bar:
-            analysis_text, token_usage = agent.run(scope, on_progress=lambda step: bar.update(1, current_item=step))
-            bar.update(max(0, bar.length - bar.pos), current_item="Completado")
+        if verbose:
+            def _on_iteration(num: int, tool_calls: list) -> None:
+                if not tool_calls:
+                    click.echo(f"[{num}/{effective_max}] → sin herramientas — generando reporte")
+                    return
+                parts = []
+                for tc in tool_calls:
+                    args = tc.get("args", {})
+                    first_val = next(iter(args.values()), None) if args else None
+                    if first_val and isinstance(first_val, str):
+                        label = f"{tc['name']}({first_val.split('/')[-1]})"
+                    else:
+                        label = tc["name"]
+                    parts.append(label)
+                click.echo(f"[{num}/{effective_max}] {', '.join(parts)}")
+
+            analysis_text, token_usage = agent.run(
+                scope,
+                on_progress=lambda step: click.echo(f"  {step}") if "Auditando" in step else None,
+                on_iteration=_on_iteration,
+            )
+        else:
+            total_steps = effective_max + 1
+            with click.progressbar(length=total_steps, label="Analizando sistema",
+                                    item_show_func=lambda step: step or "", show_eta=False) as bar:
+                analysis_text, token_usage = agent.run(scope, on_progress=lambda step: bar.update(1, current_item=step))
+                bar.update(max(0, bar.length - bar.pos), current_item="Completado")
 
     report = ReportGenerator().from_agent_output(agent_text=analysis_text, scope=scope)
     report_text = format_report_text(report)
