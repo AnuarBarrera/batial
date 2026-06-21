@@ -100,7 +100,14 @@ class GeminiAdapter(LLMAdapter):
             except genai_errors.ServerError as e:
                 if attempt < max_retries - 1:
                     wait = 2 ** attempt + random.uniform(0, 1)
-                    logger.warning(f"Gemini 503, reintentando en {wait:.1f}s (intento {attempt + 1})")
+                    logger.warning(f"Gemini 503, reintentando en {wait:.1f}s (intento {attempt + 1}/{max_retries})")
+                    time.sleep(wait)
+                else:
+                    raise
+            except genai_errors.ClientError as e:
+                if e.code == 429 and attempt < max_retries - 1:
+                    wait = min(60, 15 * (2 ** attempt)) + random.uniform(0, 1)
+                    logger.warning(f"Gemini rate limit (429), reintentando en {wait:.1f}s (intento {attempt + 1}/{max_retries})")
                     time.sleep(wait)
                 else:
                     raise

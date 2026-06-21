@@ -241,7 +241,7 @@ def test_agent_traces_run_start_with_scope_info():
         code_directory="/tmp/proyecto",
         analysis_types=["code"],
         log_files=["/var/log/auth.log"],
-        max_iterations=10,
+        max_iterations=15,
     )
 
 

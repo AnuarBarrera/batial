@@ -311,6 +311,45 @@ def test_openai_compat_returns_text(mock_post):
     assert result.content == "Hola"
     assert result.tool_calls is None
 
+@patch("cybersec.infrastructure.adapters.gemini.time.sleep")
+@patch("cybersec.infrastructure.adapters.gemini.genai")
+def test_gemini_chat_retries_on_429_rate_limit(mock_genai, mock_sleep):
+    from google.genai import errors as genai_errors
+    mock_client = MagicMock()
+    mock_genai.Client.return_value = mock_client
+    mock_resp = MagicMock()
+    mock_resp.text = "ok"
+    mock_resp.function_calls = []
+    rate_limit_err = genai_errors.ClientError(
+        429, {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED", "message": "Rate limit exceeded"}}
+    )
+    mock_client.models.generate_content.side_effect = [rate_limit_err, mock_resp]
+
+    result = GeminiAdapter(api_key="fake").chat([Message(role="user", content="analiza")])
+
+    assert mock_client.models.generate_content.call_count == 2
+    assert mock_sleep.called
+    assert result.content == "ok"
+
+
+@patch("cybersec.infrastructure.adapters.gemini.time.sleep")
+@patch("cybersec.infrastructure.adapters.gemini.genai")
+def test_gemini_chat_raises_immediately_on_non_429_client_error(mock_genai, mock_sleep):
+    from google.genai import errors as genai_errors
+    mock_client = MagicMock()
+    mock_genai.Client.return_value = mock_client
+    bad_request_err = genai_errors.ClientError(
+        400, {"error": {"code": 400, "status": "INVALID_ARGUMENT", "message": "Bad request"}}
+    )
+    mock_client.models.generate_content.side_effect = bad_request_err
+
+    with pytest.raises(genai_errors.ClientError):
+        GeminiAdapter(api_key="fake").chat([Message(role="user", content="analiza")])
+
+    assert mock_client.models.generate_content.call_count == 1
+    mock_sleep.assert_not_called()
+
+
 @patch("cybersec.infrastructure.adapters.openai_compat.requests.post")
 def test_openai_compat_returns_tool_call(mock_post):
     mock_post.return_value = MagicMock(

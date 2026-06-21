@@ -137,7 +137,7 @@ Si el reporte original ya cumple todo lo anterior, repítelo sin cambios.
 
 
 class SecurityAgent:
-    def __init__(self, adapter: LLMAdapter, tool_registry: dict, max_iterations: int = 10,
+    def __init__(self, adapter: LLMAdapter, tool_registry: dict, max_iterations: int = 15,
                  audit_adapter: LLMAdapter = None, tracer=None):
         self._adapter = adapter
         self._registry = tool_registry

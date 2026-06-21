@@ -97,7 +97,9 @@ def cli():
               help="Región de Vertex AI (ej: us-central1, global). Override de GOOGLE_CLOUD_LOCATION / ANTHROPIC_VERTEX_REGION)")
 @click.option("--trace-dir", default=None,
               help="Directorio donde guardar un trace JSONL de la corrida (diagnóstico)")
-def scan(host, logs, code_dir, types, email, adapter, model, audit_model, location, trace_dir):
+@click.option("--max-iterations", default=None, type=int,
+              help="Límite de iteraciones del agente (default: 15). Sube para análisis más exhaustivos.")
+def scan(host, logs, code_dir, types, email, adapter, model, audit_model, location, trace_dir, max_iterations):
     """Ejecuta un análisis de seguridad en el sistema."""
     warnings = check_preconditions()
     for warning in warnings:
@@ -138,11 +140,12 @@ def scan(host, logs, code_dir, types, email, adapter, model, audit_model, locati
         click.echo(f"Trace de diagnóstico: {trace_path}")
 
     with trace_cm as tracer:
-        agent = SecurityAgent(adapter=llm, tool_registry=registry, audit_adapter=audit_llm, tracer=tracer)
+        agent = SecurityAgent(
+            adapter=llm, tool_registry=registry, audit_adapter=audit_llm, tracer=tracer,
+            **({"max_iterations": max_iterations} if max_iterations is not None else {}),
+        )
 
-        # Estimación de pasos: hasta max_iterations del loop + 1 paso de auditoría final.
-        # Si el agente termina antes, la barra se completa al 100% al finalizar.
-        total_steps = 11
+        total_steps = (max_iterations or 15) + 1
         with click.progressbar(length=total_steps, label="Analizando sistema",
                                 item_show_func=lambda step: step or "", show_eta=False) as bar:
             analysis_text, token_usage = agent.run(scope, on_progress=lambda step: bar.update(1, current_item=step))
