@@ -14,3 +14,11 @@ venv/
 # Logs de runtime
 logs/
 *.log
+
+# Archivos de diagnóstico y resultados locales
+cybersec/analiza_traces.sh
+cybersec/resultados*.txt
+
+# Documentación interna de tooling (no para el repo público)
+docs/superpowers/
+PRD-agente-ciberseguridad.md

@@ -1,14 +1,12 @@
 # Agente de Ciberseguridad con IA
 
-CLI standalone en Python que analiza el estado de seguridad de un servidor Linux, orquesta un loop agentico con LLM y genera un reporte estructurado de vulnerabilidades — enviado por email al terminar.
-
-Proyecto construido en el hackathon de Google (agentes de IA), Junio 2026.
+CLI standalone en Python que analiza el estado de seguridad de un servidor Linux, orquesta un loop agéntico con LLM y genera un reporte estructurado de vulnerabilidades — enviado por email al terminar.
 
 ---
 
 ## Qué hace
 
-El agente recibe un scope de análisis (host, logs, directorio de código), lanza un loop agentico donde el LLM decide qué herramientas usar y en qué orden, ejecuta cada herramienta localmente y produce un reporte con hallazgos, severidad y recomendaciones concretas.
+El agente recibe un scope de análisis (host, logs, directorio de código), lanza un loop agéntico donde el LLM decide qué herramientas usar y en qué orden, ejecuta cada herramienta localmente y produce un reporte con hallazgos, severidad y recomendaciones concretas.
 
 ```
 Usuario define scope → LLM decide tools → Tools corren en local → LLM genera diagnóstico → LLM auditor revisa el reporte → Reporte en pantalla + email
@@ -34,35 +32,26 @@ Usuario define scope → LLM decide tools → Tools corren en local → LLM gene
 cybersec/
 ├── cybersec/
 │   ├── domain/               # Entidades y contratos (LLMAdapter, BaseTool)
-│   ├── application/          # Loop agentico (SecurityAgent) y generador de reportes
+│   ├── application/          # Loop agéntico (SecurityAgent) y generador de reportes
 │   └── infrastructure/
-│       ├── adapters/         # GeminiAdapter + OpenAICompatAdapter
+│       ├── adapters/         # GeminiAdapter, OpenAICompatAdapter, AnthropicVertexAdapter
 │       ├── tools/            # Las 7 herramientas de análisis
 │       └── notifiers/        # MailgunNotifier (email)
-├── tests/                    # 145 tests con pytest
+├── tests/                    # 155 tests con pytest
 ├── .env.example
 ├── requirements.txt
 └── pytest.ini
 ```
 
-**Principio clave:** el agente no conoce el proveedor de LLM — solo habla con `LLMAdapter`. Cambiar de Gemini a vLLM propio es cambiar una variable de entorno.
+**Principio clave:** el agente no conoce el proveedor de LLM — solo habla con `LLMAdapter`. Cambiar de Gemini a Claude o a vLLM propio es cambiar una variable de entorno.
 
 ---
 
 ## Pre-fetch determinista de archivos de seguridad obligatorios
 
-El loop agéntico le da al LLM control sobre qué herramientas usa y en qué
-orden — pero eso introduce no-determinismo. En pruebas reales, el modelo
-ocasionalmente decidía **no** llamar a `read_code_snippet` sobre archivos
-críticos (autenticación, configuración, credenciales) aunque el prompt lo
-pidiera explícitamente, dejando hallazgos **Critical** (ej. contraseñas
-persistidas en texto plano) fuera del reporte final — de forma intermitente
-entre corridas, sin cambios en el código analizado.
+El loop agéntico le da al LLM control sobre qué herramientas usa y en qué orden — pero eso introduce no-determinismo. En pruebas reales, el modelo ocasionalmente decidía **no** llamar a `read_code_snippet` sobre archivos críticos (autenticación, configuración, credenciales) aunque el prompt lo pidiera explícitamente.
 
-Para eliminar esa discrecionalidad, **antes** de que el LLM reciba su primer
-turno, `SecurityAgent._prefetch_mandatory_files()` ejecuta determinísticamente
-`list_code_files` + `read_code_snippet` sobre cualquier archivo del proyecto
-cuyo nombre coincida con estos patrones:
+Para eliminar esa discrecionalidad, **antes** de que el LLM reciba su primer turno, `SecurityAgent._prefetch_mandatory_files()` ejecuta determinísticamente `list_code_files` + `read_code_snippet` sobre cualquier archivo del proyecto cuyo nombre coincida con estos patrones:
 
 ```python
 MANDATORY_FILE_PATTERNS = [
@@ -73,17 +62,7 @@ MANDATORY_FILE_PATTERNS = [
 ]
 ```
 
-El contenido de esos archivos se inyecta como texto plano al final del prompt
-inicial: el LLM lo recibe ya leído, sin depender de que decida pedirlo. El
-prompt le indica explícitamente que no necesita volver a llamar
-`read_code_snippet` sobre ellos, y que use las tools normalmente para explorar
-el resto del proyecto (inputs, sesiones, permisos, lógica de negocio).
-
-Cada lectura del pre-fetch se traza con `iteration=0` (mismo evento
-`tool_result` que usa el loop principal), distinguible de las iteraciones del
-LLM (`1..N`) en los `.jsonl` generados con `scan --trace-dir`. Validado en 3/3
-corridas reales: el archivo crítico aparece siempre con `iteration=0` y el
-hallazgo Critical correspondiente aparece siempre en el reporte final.
+El contenido de esos archivos se inyecta como texto plano al final del prompt inicial: el LLM lo recibe ya leído, sin depender de que decida pedirlo.
 
 ---
 
@@ -92,7 +71,7 @@ hallazgo Critical correspondiente aparece siempre en el reporte final.
 - Python 3.10+
 - `nmap` instalado en el sistema (`sudo apt install nmap`)
 - `pip-audit` para análisis de dependencias Python (`pip install pip-audit`)
-- `bandit` para análisis estático de código Python (`pip install bandit`, incluido en `requirements.txt`)
+- `bandit` para análisis estático de código Python (incluido en `requirements.txt`)
 
 ---
 
@@ -111,13 +90,24 @@ cp .env.example .env
 
 ## Configuración
 
-Copia `.env.example` a `.env` y completa los valores:
+Copia `.env.example` a `.env` y completa los valores según el adaptador que quieras usar:
 
 ```env
-# LLM — Gemini (créditos del hackathon)
+# LLM — Gemini (API directa)
 GEMINI_API_KEY=tu_api_key
-GEMINI_MODEL=gemini-3.1-flash-lite  # modelo estable de bajo costo para alto volumen
-GEMINI_AUDIT_MODEL=gemini-3.5-flash  # solo para el paso de auditoría del reporte final
+GEMINI_MODEL=gemini-2.5-flash
+GEMINI_AUDIT_MODEL=gemini-2.5-pro
+
+# LLM — Vertex AI (GCP, Gemini o Claude)
+GOOGLE_CLOUD_PROJECT=tu-proyecto-gcp
+GOOGLE_CLOUD_LOCATION=us-central1
+GEMINI_VERTEX_MODEL=gemini-2.5-pro
+GEMINI_VERTEX_AUDIT_MODEL=gemini-2.5-pro
+
+# LLM — Claude vía Vertex AI
+ANTHROPIC_VERTEX_PROJECT=tu-proyecto-gcp
+ANTHROPIC_VERTEX_REGION=us-east5
+ANTHROPIC_VERTEX_MODEL=claude-sonnet-4-5
 
 # LLM — OpenAI-compatible (vLLM propio, Ollama, Groq, Together…)
 OPENAI_COMPAT_BASE_URL=http://tu-servidor:8000
@@ -137,25 +127,28 @@ MAILGUN_SENDER_EMAIL=seguridad@tudominio.com
 # Análisis básico en localhost con Gemini
 python3 -m cybersec scan
 
-# Análisis completo con logs y email de reporte
+# Análisis completo con logs y email
 python3 -m cybersec scan \
   --host 192.168.1.10 \
   --log /var/log/auth.log \
   --log /var/log/nginx/access.log \
-  --type network \
-  --type logs \
-  --type config \
-  --type deps \
+  --type network --type logs --type config --type deps --type code \
+  --code-dir /ruta/a/tu/proyecto \
   --email tu@email.com
 
-# Usar vLLM propio en vez de Gemini
-python3 -m cybersec scan --adapter openai --host 10.0.0.5
-```
+# Usar Vertex AI (Gemini en GCP)
+python3 -m cybersec scan --adapter vertex --model gemini-2.5-pro --location global --host 10.0.0.5
 
-Durante la ejecución se muestra una barra de progreso que avanza con cada paso
-del agente y el nombre de la acción en curso (ej. "Ejecutando
-scan_code_security...", "Analizando (paso 2/10)...", "Auditando el
-reporte..."), hasta completarse al 100% al finalizar.
+# Usar Claude vía Vertex AI
+python3 -m cybersec scan --adapter anthropic-vertex --model claude-sonnet-4-6 --host 10.0.0.5
+
+# Modo verbose: ver qué archivos explora el agente en cada iteración
+python3 -m cybersec scan --verbose --adapter vertex --model gemini-2.5-pro \
+  --host 192.168.1.10 --code-dir /ruta/proyecto
+
+# Guardar trace JSONL para diagnóstico
+python3 -m cybersec scan --trace-dir /tmp/cybersec-traces --host 192.168.1.10
+```
 
 ### Opciones del comando `scan`
 
@@ -166,28 +159,50 @@ reporte..."), hasta completarse al 100% al finalizar.
 | `--code-dir` | — | Directorio de código para análisis estático |
 | `--type` | todos | `network`, `logs`, `deps`, `code`, `config` (repetible) |
 | `--email` | — | Email para recibir el reporte por Mailgun |
-| `--adapter` | `gemini` | `gemini` o `openai` |
+| `--adapter` | `gemini` | `gemini`, `vertex`, `anthropic-vertex`, `openai` |
+| `--model` | según adapter | Override del modelo configurado en `.env` |
+| `--audit-model` | según adapter | Modelo para el paso de auditoría |
+| `--location` | según adapter | Región de Vertex AI (`us-central1`, `global`, etc.) |
+| `--max-iterations` | `15` | Límite de iteraciones del loop agéntico |
+| `--verbose` | off | Muestra herramientas por iteración en lugar de barra de progreso |
+| `--trace-dir` | — | Directorio donde guardar un trace JSONL de la corrida |
+
+### Modo verbose
+
+Con `--verbose` se muestra en tiempo real qué explora el agente en cada iteración:
+
+```
+[1/15] scan_code_security, check_dependencies, list_code_files
+[2/15] read_code_snippet(settings.py), read_code_snippet(auth_service.py)
+[3/15] read_code_snippet(views.py), read_code_snippet(web_scraper.py)
+[4/15] read_code_snippet(pii_handler.py)
+[5/15] → sin herramientas — generando reporte
+  Auditando el reporte...
+```
+
+Útil para entender qué rutas de exploración tomó el agente y en qué punto decidió que tenía suficiente información.
 
 ### Formato del reporte
 
 ```
-REPORTE DE SEGURIDAD — 2026-06-09 14:32 — 192.168.1.10
-══════════════════════════════════════════════════════
+REPORTE DE SEGURIDAD — 2026-06-22 04:13 — 192.168.1.10
+════════════════════════════════════════════════════════
 
 RESUMEN EJECUTIVO
-  Total hallazgos: 4  │  Critical: 0  │  High: 2  │  Medium: 1  │  Low: 1
+  Total hallazgos: 10  (Critical: 0 │ High: 8 │ Medium: 1 │ Low: 1)
 
 HALLAZGOS
-  [HIGH-001] Brute force SSH detectado
-  Severidad : High
-  Evidencia : 127 intentos fallidos desde 45.33.32.156 en /var/log/auth.log
-  Recomendación: Bloquear IP con ufw deny from 45.33.32.156; instalar fail2ban
+  [F001] Subida de Archivos Arbitrarios (Unrestricted File Upload)
+  Severidad: High
+  Evidencia: En views.py, _update_active_product_images extrae la extensión
+             directamente del nombre del archivo sin validarla contra una lista blanca.
+  Recomendación: Usar la función _safe_extension existente antes de guardar.
 
   ...
 
 PRÓXIMOS PASOS
-  1. Bloquear IPs con actividad de brute force
-  2. Desactivar PasswordAuthentication en sshd_config
+  1. Validar extensiones en todos los puntos de subida de archivos
+  2. Agregar @login_required a vistas que exponen datos por job_id
   ...
 ```
 
@@ -201,23 +216,37 @@ source venv/bin/activate
 pytest -v
 ```
 
-145 tests cubriendo domain, tools, adapters, agent loop y reporte.
+155 tests cubriendo domain, tools, adapters, agent loop, pre-fetch y reporte.
 
 ---
 
 ## Adaptadores LLM
 
-### Gemini (default)
+### Gemini (API directa)
 
-Usa la API de Google Gemini con function calling nativo. Requiere `GEMINI_API_KEY`. Modelo por defecto: `gemini-3.1-flash-lite` (configurable con `GEMINI_MODEL`).
+Usa la API de Google Gemini con function calling nativo. Requiere `GEMINI_API_KEY`.
 
-Además del modelo principal, se hace una segunda llamada de **auditoría** con `GEMINI_AUDIT_MODEL` (default `gemini-3.5-flash`, modelo de frontera para tareas agénticas, más capaz que `-lite`): revisa el reporte generado contra toda la evidencia recopilada (resultados de tools, código leído) usando un checklist explícito — hallazgos de `scan_code_security` con severidad Medium/High, contraseñas o secretos en texto plano, archivos obligatorios sin revisar — y corrige el reporte final si encuentra omisiones. Si esta llamada falla, se conserva el reporte original sin auditar.
+### Vertex AI (Gemini en GCP)
+
+Usa Application Default Credentials de GCP. No requiere API key — autentica con `gcloud auth application-default login`. Ideal para producción con créditos GCP.
+
+```bash
+python3 -m cybersec scan --adapter vertex --model gemini-2.5-pro --location global
+```
+
+### Claude vía Vertex AI
+
+Permite usar modelos Claude (Anthropic) a través de Vertex AI. Requiere aceptar los términos de uso de Anthropic en el Model Garden de GCP.
+
+```bash
+python3 -m cybersec scan --adapter anthropic-vertex --model claude-sonnet-4-6
+```
 
 ### OpenAI-compatible
 
 Apunta a cualquier servidor con endpoint `/v1/chat/completions`: vLLM propio en GCP, Ollama en local, Groq, Together AI, OpenRouter. Requiere `OPENAI_COMPAT_BASE_URL` y `OPENAI_COMPAT_MODEL`.
 
-**Setup recomendado en producción:** instancia GCP L4 con vLLM + Qwen2.5-Coder 14B (~$0.70/hr on-demand). Los datos del cliente viajan solo a tu instancia privada, sin pasar por APIs públicas.
+**Setup en producción:** instancia GCP L4 con vLLM + Qwen2.5-Coder 14B (~$0.70/hr on-demand). Los datos del cliente viajan solo a tu instancia privada.
 
 ---
 
@@ -225,7 +254,7 @@ Apunta a cualquier servidor con endpoint `/v1/chat/completions`: vLLM propio en 
 
 | Fase | Estado | Descripción |
 |---|---|---|
-| **Fase 1 — Diagnóstico** | ✅ Completa y validada en producción | CLI que analiza y reporta |
+| **Fase 1 — Diagnóstico** | ✅ Completa | CLI que analiza y reporta vulnerabilidades reales |
 | **Fase 2 — Remediación** | Planeada | El agente propone y aplica parches con confirmación del usuario |
 | **Fase 3 — Monitoreo** | Planeada | Daemon 24/7 que detecta ataques en tiempo real y envía alertas |
 
@@ -233,21 +262,6 @@ Apunta a cualquier servidor con endpoint `/v1/chat/completions`: vLLM propio en 
 
 ## Estado actual
 
-Fase 1 (MVP) completa y validada end-to-end con una corrida real de producción:
-RESUMEN EJECUTIVO con conteo correcto de hallazgos, HALLAZGOS estructurados
-ordenados por severidad (parseados desde `HALLAZGOS_JSON`), análisis del agente
-sobre código fuente real (`list_code_files` + `read_code_snippet` + análisis
-estático determinista con `scan_code_security`/bandit), un paso de auditoría
-con un modelo más capaz (`GEMINI_AUDIT_MODEL`) que revisa el reporte contra la
-evidencia recopilada, y PRÓXIMOS PASOS poblados con acciones priorizadas.
+Fase 1 completa y validada en producción contra repositorios reales. El agente encuentra vulnerabilidades reales — confirmado corrigiendo los hallazgos y verificando que eran explotables: IP Spoofing vía X-Forwarded-For, IDOR sin autenticación, XXE en parseo de SVG generado por IA, Unrestricted File Upload, middlewares de rate limiting registrados en código pero no activos en `settings.py`, credenciales GCP montadas en Docker, y más.
 
-Se agregó además el [pre-fetch determinista de archivos de seguridad
-obligatorios](#pre-fetch-determinista-de-archivos-de-seguridad-obligatorios),
-que elimina la dependencia del juicio del LLM para cubrir archivos críticos
-(auth, config, credenciales). Validado en 3/3 corridas reales: el hallazgo
-Critical de contraseñas en texto plano aparece consistentemente en el reporte.
-145/145 tests pasando.
-
-Próximos pasos: pruebas adicionales contra otros repos y servidores para
-evaluar cobertura de hallazgos, y luego Fase 2 (remediación asistida) sobre un
-proyecto sin riesgo.
+Resultados típicos: 10 hallazgos por corrida (High: 4-8), ~263K tokens con gemini-2.5-pro (~$0.37 USD/scan), 5-9 iteraciones de las 15 disponibles. 155/155 tests pasando.
