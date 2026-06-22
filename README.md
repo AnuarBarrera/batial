@@ -16,7 +16,7 @@ Usuario define scope → LLM decide tools → Tools corren en local → LLM gene
 
 | Tool | Qué hace |
 |---|---|
-| `scan_ports` | Wrapper de nmap — top 100 puertos TCP, detecta servicios sensibles expuestos (MySQL, Redis, VNC, etc.) |
+| `scan_ports` | Wrapper de nmap — top 1000 puertos TCP, detecta servicios sensibles expuestos (MySQL, Redis, VNC, etc.) |
 | `analyze_logs` | Parsea auth.log, syslog, nginx/apache — detecta brute force SSH, IPs repetidas, errores 5xx |
 | `check_dependencies` | Verifica paquetes pip/npm contra CVEs conocidos con `pip-audit` y `npm audit` |
 | `list_code_files` | Lista archivos de código en un directorio (recursivo, excluye .git/node_modules/venv/etc.) |
