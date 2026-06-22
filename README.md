@@ -182,6 +182,24 @@ Con `--verbose` se muestra en tiempo real qué explora el agente en cada iteraci
 
 Útil para entender qué rutas de exploración tomó el agente y en qué punto decidió que tenía suficiente información.
 
+### Resumen de tokens y costo
+
+Al finalizar cada scan se muestra un resumen de tokens consumidos y el costo estimado. Si se especificó `--model`, muestra solo ese modelo; si no, compara todos los modelos soportados:
+
+```
+────────────────────────────────────────────────────────────
+Tokens utilizados: 258,227 entrada / 5,183 salida (total: 263,410)
+Costo estimado por modelo:
+  gemini-2.5-flash: $0.0209
+  gemini-2.5-pro:   $0.3746
+  claude-haiku-4-5: $0.2273
+  claude-sonnet-4-6: $0.8524
+  claude-opus-4-8:  $4.2621
+────────────────────────────────────────────────────────────
+```
+
+Útil para comparar el costo-beneficio entre modelos antes de escalar a producción.
+
 ### Formato del reporte
 
 ```
