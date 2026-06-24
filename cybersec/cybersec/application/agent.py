@@ -94,6 +94,8 @@ Usa todas las herramientas disponibles para cubrir las siguientes áreas:
      hayan sido pre-cargados: vistas HTTP, autenticación/autorización, sesiones,
      validación de inputs, permisos, APIs expuestas, servicios críticos de negocio,
      configuración de servicios externos.
+     Si existen CLAUDE.md, GEMINI.md, AGENTS.md o memory.md en el directorio,
+     léelos para entender la arquitectura y decisiones de diseño antes de concluir.
   4. Por cada resultado de herramienta o archivo leído: evalúa si apunta a nuevas
      áreas que investigar y, si las hay, investígalas antes de concluir.
 
@@ -217,10 +219,14 @@ class SecurityAgent:
             code=scope.code_directory or "ninguno",
             hours=scope.time_range_hours,
         )
-        if project_context:
-            initial += "\n\n" + project_context
         if accepted_findings:
             initial += "\n\n" + accepted_findings
+        # project_context (CLAUDE.md, GEMINI.md, etc.) se inyecta solo si cabe
+        # en el presupuesto de tokens — se estima por longitud de caracteres.
+        # Si el contexto total ya es grande (pre-fetch pesado), se omite para
+        # no superar la ventana de TPM; el agente puede leerlos con read_code_snippet.
+        if project_context and len(initial) + len(project_context) < 120_000:
+            initial += "\n\n" + project_context
         prefetch_text = self._prefetch_mandatory_files(scope.code_directory)
         if prefetch_text:
             initial += "\n\n" + prefetch_text
@@ -309,11 +315,33 @@ class SecurityAgent:
         report = final.content or "(análisis incompleto)"
         return self._audit(messages, final, report, notify, total_usage)
 
+    @staticmethod
+    def _compact_for_audit(messages: list[Message], max_result_chars: int = 400) -> list[Message]:
+        """Reduce el contexto del auditor truncando resultados de herramientas.
+
+        El auditor solo necesita saber QUÉ herramientas se ejecutaron y un
+        fragmento de cada resultado para verificar que el reporte es fiel a la
+        evidencia. El código fuente completo de cada archivo no es necesario.
+        """
+        compacted = []
+        for msg in messages:
+            if msg.role == "tool" and msg.tool_results:
+                truncated = []
+                for tr in msg.tool_results:
+                    content = tr["content"]
+                    if len(content) > max_result_chars:
+                        content = content[:max_result_chars] + f"\n[... {len(tr['content']) - max_result_chars} chars omitidos ...]"
+                    truncated.append({"name": tr["name"], "content": content})
+                compacted.append(Message(role="tool", content="", tool_results=truncated))
+            else:
+                compacted.append(msg)
+        return compacted
+
     def _audit(self, messages: list[Message], last_response: Message, report: str,
                notify: Callable[[str], None], total_usage: TokenUsage = None) -> tuple[str, TokenUsage]:
         notify("Auditando el reporte...")
         usage = total_usage or TokenUsage()
-        audit_messages = messages + [
+        audit_messages = self._compact_for_audit(messages) + [
             last_response,
             Message(role="user", content=_AUDIT_PROMPT.format(report=report)),
         ]

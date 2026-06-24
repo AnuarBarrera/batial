@@ -6,7 +6,7 @@ from cybersec.domain.tools import BaseTool, ToolResult
 MAX_LINES = 1000
 MAX_FILES = 500
 ALLOWED_EXTENSIONS = {".py", ".js", ".ts", ".go", ".rb", ".php", ".java", ".sh",
-                      ".yaml", ".yml", ".env", ".conf", ".cfg", ".ini", ".toml"}
+                      ".yaml", ".yml", ".env", ".conf", ".cfg", ".ini", ".toml", ".md", ".txt"}
 EXCLUDED_DIRS = {".git", "node_modules", "__pycache__", "venv", ".venv", "dist", "build", ".pytest_cache"}
 
 _ENV_SAFE_VALUES = {"", "true", "false", "yes", "no", "0", "1", "none", "null", "*",

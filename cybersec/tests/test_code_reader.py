@@ -44,7 +44,7 @@ def test_list_code_files_finds_relevant_files(tmp_path):
     assert r.success is True
     assert "app.py" in r.content
     assert "config.yaml" in r.content
-    assert "readme.md" not in r.content
+    assert "readme.md" in r.content
 
 
 def test_list_code_files_excludes_noise_dirs(tmp_path):
