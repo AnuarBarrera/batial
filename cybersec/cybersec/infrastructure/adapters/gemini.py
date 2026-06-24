@@ -41,11 +41,13 @@ class GeminiAdapter(LLMAdapter):
         self._location = location
 
     def _client(self) -> genai.Client:
-        http_options = {"timeout": 600}
         if self._project:
+            # Vertex AI usa REST — sin timeout puede colgar indefinidamente
             return genai.Client(vertexai=True, project=self._project,
-                                location=self._location, http_options=http_options)
-        return genai.Client(api_key=self._api_key, http_options=http_options)
+                                location=self._location, http_options={"timeout": 600})
+        # API directa de Gemini interpreta http_options diferente (deadline gRPC)
+        # y sus timeouts por defecto son suficientes
+        return genai.Client(api_key=self._api_key)
 
     def supports_tools(self) -> bool:
         return True
