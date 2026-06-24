@@ -1,6 +1,7 @@
 import logging
 import random
 import time
+import httpx
 from google import genai
 from google.genai import types, errors as genai_errors
 from cybersec.domain.llm_adapter import LLMAdapter, Message, TokenUsage
@@ -40,7 +41,7 @@ class GeminiAdapter(LLMAdapter):
         self._location = location
 
     def _client(self) -> genai.Client:
-        http_options = {"timeout": 180}
+        http_options = {"timeout": 600}
         if self._project:
             return genai.Client(vertexai=True, project=self._project,
                                 location=self._location, http_options=http_options)
@@ -110,6 +111,13 @@ class GeminiAdapter(LLMAdapter):
                 if e.code == 429 and attempt < max_retries - 1:
                     wait = min(60, 15 * (2 ** attempt)) + random.uniform(0, 1)
                     logger.warning(f"Gemini rate limit (429), reintentando en {wait:.1f}s (intento {attempt + 1}/{max_retries})")
+                    time.sleep(wait)
+                else:
+                    raise
+            except (httpx.ReadTimeout, httpx.ConnectTimeout) as e:
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt + random.uniform(0, 1)
+                    logger.warning(f"Timeout de red ({type(e).__name__}), reintentando en {wait:.1f}s (intento {attempt + 1}/{max_retries})")
                     time.sleep(wait)
                 else:
                     raise
