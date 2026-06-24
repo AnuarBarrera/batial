@@ -60,12 +60,60 @@ def test_list_code_files_excludes_noise_dirs(tmp_path):
     assert ".git" not in r.content
 
 
-def test_list_code_files_excludes_env_files(tmp_path):
+def test_list_code_files_includes_env_dotfile(tmp_path):
     (tmp_path / "app.py").write_text("x = 1")
     (tmp_path / ".env").write_text("API_KEY=secret")
     r = ListCodeFilesTool().execute(directory=str(tmp_path))
     assert "app.py" in r.content
-    assert ".env" not in r.content
+    assert ".env" in r.content
+
+
+def test_list_code_files_includes_env_variants(tmp_path):
+    (tmp_path / ".env.local").write_text("DEBUG=True")
+    (tmp_path / ".env.production").write_text("SECRET=abc")
+    (tmp_path / "prod.env").write_text("TOKEN=xyz")
+    r = ListCodeFilesTool().execute(directory=str(tmp_path))
+    assert ".env.local" in r.content
+    assert ".env.production" in r.content
+    assert "prod.env" in r.content
+
+
+def test_read_code_snippet_redacts_env_secrets(tmp_path):
+    f = tmp_path / ".env"
+    f.write_text("API_KEY=supersecret123\nDEBUG=True\nSECRET_KEY=abc-xyz-789\n")
+    r = CodeReaderTool().execute(file_path=str(f))
+    assert r.success is True
+    assert "API_KEY=[REDACTED]" in r.content
+    assert "SECRET_KEY=[REDACTED]" in r.content
+    assert "supersecret123" not in r.content
+    assert "abc-xyz-789" not in r.content
+    assert "DEBUG=True" in r.content
+
+
+def test_read_code_snippet_redacts_env_extension_file(tmp_path):
+    f = tmp_path / "prod.env"
+    f.write_text("DATABASE_URL=postgres://user:pass@host/db\nDEBUG=false\n")
+    r = CodeReaderTool().execute(file_path=str(f))
+    assert r.success is True
+    assert "DATABASE_URL=[REDACTED]" in r.content
+    assert "postgres://user:pass@host/db" not in r.content
+    assert "DEBUG=false" in r.content
+
+
+def test_read_code_snippet_preserves_comments_and_empty_lines_in_env(tmp_path):
+    f = tmp_path / ".env"
+    f.write_text("# Configuración\n\nAPI_KEY=secret\nDEBUG=True\n")
+    r = CodeReaderTool().execute(file_path=str(f))
+    assert "# Configuración" in r.content
+    assert "API_KEY=[REDACTED]" in r.content
+    assert "DEBUG=True" in r.content
+
+
+def test_read_code_snippet_shows_redacted_note_for_env_files(tmp_path):
+    f = tmp_path / ".env"
+    f.write_text("KEY=value\n")
+    r = CodeReaderTool().execute(file_path=str(f))
+    assert "redactados" in r.content
 
 
 def test_list_code_files_missing_directory():
