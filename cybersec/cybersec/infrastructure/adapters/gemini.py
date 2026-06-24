@@ -40,9 +40,11 @@ class GeminiAdapter(LLMAdapter):
         self._location = location
 
     def _client(self) -> genai.Client:
+        http_options = {"timeout": 180}
         if self._project:
-            return genai.Client(vertexai=True, project=self._project, location=self._location)
-        return genai.Client(api_key=self._api_key)
+            return genai.Client(vertexai=True, project=self._project,
+                                location=self._location, http_options=http_options)
+        return genai.Client(api_key=self._api_key, http_options=http_options)
 
     def supports_tools(self) -> bool:
         return True
