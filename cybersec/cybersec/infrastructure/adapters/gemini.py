@@ -1,5 +1,6 @@
 import logging
 import random
+import signal
 import time
 import httpx
 from google import genai
@@ -42,11 +43,7 @@ class GeminiAdapter(LLMAdapter):
 
     def _client(self) -> genai.Client:
         if self._project:
-            # Vertex AI usa REST — sin timeout puede colgar indefinidamente
-            return genai.Client(vertexai=True, project=self._project,
-                                location=self._location, http_options={"timeout": 600})
-        # API directa de Gemini interpreta http_options diferente (deadline gRPC)
-        # y sus timeouts por defecto son suficientes
+            return genai.Client(vertexai=True, project=self._project, location=self._location)
         return genai.Client(api_key=self._api_key)
 
     def supports_tools(self) -> bool:
@@ -96,11 +93,20 @@ class GeminiAdapter(LLMAdapter):
         max_retries = 4
         for attempt in range(max_retries):
             try:
-                response = client.models.generate_content(
-                    model=self._model,
-                    contents=contents,
-                    config=config,
-                )
+                # signal.alarm garantiza un timeout real en segundos (independiente
+                # del SDK). Solo disponible en Linux/macOS — en Windows no hace nada.
+                if hasattr(signal, "SIGALRM"):
+                    signal.signal(signal.SIGALRM, lambda s, f: (_ for _ in ()).throw(TimeoutError("LLM timeout")))
+                    signal.alarm(600)
+                try:
+                    response = client.models.generate_content(
+                        model=self._model,
+                        contents=contents,
+                        config=config,
+                    )
+                finally:
+                    if hasattr(signal, "SIGALRM"):
+                        signal.alarm(0)
                 break
             except genai_errors.ServerError as e:
                 if attempt < max_retries - 1:
@@ -116,7 +122,7 @@ class GeminiAdapter(LLMAdapter):
                     time.sleep(wait)
                 else:
                     raise
-            except (httpx.ReadTimeout, httpx.ConnectTimeout) as e:
+            except (httpx.ReadTimeout, httpx.ConnectTimeout, TimeoutError) as e:
                 if attempt < max_retries - 1:
                     wait = 2 ** attempt + random.uniform(0, 1)
                     logger.warning(f"Timeout de red ({type(e).__name__}), reintentando en {wait:.1f}s (intento {attempt + 1}/{max_retries})")
