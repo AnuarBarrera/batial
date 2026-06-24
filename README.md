@@ -166,6 +166,7 @@ python3 -m cybersec scan --trace-dir /tmp/cybersec-traces --host 192.168.1.10
 | `--max-iterations` | `15` | Límite de iteraciones del loop agéntico |
 | `--verbose` | off | Muestra herramientas por iteración en lugar de barra de progreso |
 | `--trace-dir` | — | Directorio donde guardar un trace JSONL de la corrida |
+| `--exceptions-file` | — | Archivo `.md` con hallazgos aceptados a nivel de host (puertos, infra) |
 
 ### Modo verbose
 
@@ -181,6 +182,62 @@ Con `--verbose` se muestra en tiempo real qué explora el agente en cada iteraci
 ```
 
 Útil para entender qué rutas de exploración tomó el agente y en qué punto decidió que tenía suficiente información.
+
+### Hallazgos aceptados formalmente
+
+El agente distingue entre hallazgos que requieren acción y hallazgos que han sido revisados y aceptados conscientemente (deuda técnica, decisiones de arquitectura, limitaciones del MVP). Los aceptados aparecen en el reporte en una sección separada, excluidos de PRÓXIMOS PASOS, y no cuentan en el resumen ejecutivo.
+
+Se soportan dos fuentes que se fusionan en cada scan:
+
+**1. Excepciones del proyecto** — viven en el repositorio analizado:
+
+```bash
+# {code-dir}/.cybersec-exceptions.md
+## CSP con unsafe-inline y unsafe-eval
+**Razón:** Los templates Django usan scripts inline — refactorización pendiente Fase 2.
+
+## DNS Rebinding TOCTOU en WebScraper
+**Razón:** Requiere DNS malicioso con TTL bajo + timing exacto. Complejidad alta, aceptado para MVP.
+```
+
+Se detectan automáticamente si el archivo existe en `--code-dir`. No requieren ningún flag adicional.
+
+**2. Excepciones de host** — independientes del código analizado, para puertos o configuración de infraestructura que aplica al servidor:
+
+```bash
+# ~/.cybersec-host.md  (o cualquier ruta)
+## Puerto 8000 expuesto
+**Razón:** Servicio de desarrollo interno en red LAN — no accesible desde internet.
+
+## Puerto 5678 (n8n)
+**Razón:** Herramienta interna de automatización, acceso restringido a la red local.
+```
+
+```bash
+python3 -m cybersec scan --exceptions-file ~/.cybersec-host.md ...
+```
+
+El formato es Markdown libre — el agente hace el matching semántico, no por cadena exacta.
+
+En el reporte los hallazgos aceptados aparecen así:
+
+```
+HALLAZGOS ACEPTADOS
+----------------------------------------
+  (Revisados y aprobados formalmente — excluidos de próximos pasos)
+
+  [F003] Puerto 8000 expuesto  [Medium]
+  Razón: Servicio de desarrollo en red LAN — no accesible desde internet
+
+  [F004] DNS Rebinding TOCTOU  [Medium]
+  Razón: Requiere DNS malicioso con TTL bajo. Aceptado para MVP.
+```
+
+### Contexto del proyecto (CLAUDE.md, GEMINI.md, AGENTS.md)
+
+Si el directorio analizado contiene archivos de contexto para agentes de IA (`CLAUDE.md`, `GEMINI.md`, `AGENTS.md`, `memory.md`), el agente los lee durante el análisis para entender la arquitectura del proyecto, decisiones de diseño y deuda técnica conocida. Esto reduce falsos positivos sin configuración adicional — el agente llega informado sobre por qué ciertas cosas son como son.
+
+No requiere ninguna acción: si el archivo existe en `--code-dir`, el agente lo encontrará y lo leerá. También puedes añadir una sección `## Vulnerabilidades de Seguridad Aceptadas` directamente en tu `CLAUDE.md` para combinar contexto y excepciones en un solo archivo.
 
 ### Resumen de tokens y costo
 
