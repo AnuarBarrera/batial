@@ -41,7 +41,9 @@ _OUTPUT_FORMAT_INSTRUCTIONS = _SEVERITY_CRITERIA + "\n\nTu respuesta final debe 
     '```json con un array de objetos, cada uno con las claves "title" (string), '
     '"severity" (uno de "Critical", "High", "Medium", "Low" en inglés, según los '
     'CRITERIOS DE SEVERIDAD anteriores), "evidence" (string breve) y "recommendation" '
-    '(string). Incluye solo problemas de seguridad reales, no estados positivos. '
+    '(string). Si el hallazgo coincide con uno de los HALLAZGOS ACEPTADOS FORMALMENTE, '
+    'agrégale además "status": "accepted" y "accepted_reason": "<razón indicada>". '
+    'Incluye solo problemas de seguridad reales, no estados positivos. '
     'Reporta TODOS los hallazgos que hayas identificado — no existe un número máximo. '
     'Si encontraste 10 hallazgos, incluye los 10 ordenados de mayor a menor severidad. '
     'No descartes un hallazgo porque ya tienes "suficientes".\n'
@@ -202,7 +204,8 @@ class SecurityAgent:
         return "ARCHIVOS DE SEGURIDAD OBLIGATORIOS (pre-fetch automático, ya leídos):\n\n" + "\n\n".join(sections)
 
     def run(self, scope: ScanScope, on_progress: Optional[Callable[[str], None]] = None,
-            on_iteration: Optional[Callable[[int, list[dict]], None]] = None) -> tuple[str, TokenUsage]:
+            on_iteration: Optional[Callable[[int, list[dict]], None]] = None,
+            project_context: str = "", accepted_findings: str = "") -> tuple[str, TokenUsage]:
         def notify(message: str) -> None:
             if on_progress:
                 on_progress(message)
@@ -214,6 +217,10 @@ class SecurityAgent:
             code=scope.code_directory or "ninguno",
             hours=scope.time_range_hours,
         )
+        if project_context:
+            initial += "\n\n" + project_context
+        if accepted_findings:
+            initial += "\n\n" + accepted_findings
         prefetch_text = self._prefetch_mandatory_files(scope.code_directory)
         if prefetch_text:
             initial += "\n\n" + prefetch_text

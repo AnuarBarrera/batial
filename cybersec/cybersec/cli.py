@@ -9,6 +9,7 @@ from cybersec.infrastructure.preconditions import check_preconditions
 from cybersec.infrastructure.tools.registry import get_registry
 from cybersec.infrastructure.tracing import RunTracer
 from cybersec.application.agent import SecurityAgent
+from cybersec.application.context_loader import load_project_context, load_exceptions
 from cybersec.application.report import ReportGenerator, format_report_text
 
 
@@ -101,7 +102,11 @@ def cli():
               help="Límite de iteraciones del agente (default: 15). Sube para análisis más exhaustivos.")
 @click.option("--verbose", is_flag=True, default=False,
               help="Muestra herramientas llamadas en cada iteración en lugar de la barra de progreso.")
-def scan(host, logs, code_dir, types, email, adapter, model, audit_model, location, trace_dir, max_iterations, verbose):
+@click.option("--exceptions-file", default=None,
+              help="Archivo .md con hallazgos aceptados a nivel de host (puertos, infra). "
+                   "Para excepciones de código coloca .cybersec-exceptions.md en --code-dir.")
+def scan(host, logs, code_dir, types, email, adapter, model, audit_model, location, trace_dir,
+         max_iterations, verbose, exceptions_file):
     """Ejecuta un análisis de seguridad en el sistema."""
     warnings = check_preconditions()
     for warning in warnings:
@@ -141,6 +146,9 @@ def scan(host, logs, code_dir, types, email, adapter, model, audit_model, locati
         trace_cm = RunTracer(trace_path)
         click.echo(f"Trace de diagnóstico: {trace_path}")
 
+    project_context = load_project_context(code_dir)
+    accepted = load_exceptions(code_dir, exceptions_file)
+
     with trace_cm as tracer:
         effective_max = max_iterations or 15
         agent = SecurityAgent(
@@ -168,12 +176,19 @@ def scan(host, logs, code_dir, types, email, adapter, model, audit_model, locati
                 scope,
                 on_progress=lambda step: click.echo(f"  {step}") if "Auditando" in step else None,
                 on_iteration=_on_iteration,
+                project_context=project_context,
+                accepted_findings=accepted,
             )
         else:
             total_steps = effective_max + 1
             with click.progressbar(length=total_steps, label="Analizando sistema",
                                     item_show_func=lambda step: step or "", show_eta=False) as bar:
-                analysis_text, token_usage = agent.run(scope, on_progress=lambda step: bar.update(1, current_item=step))
+                analysis_text, token_usage = agent.run(
+                    scope,
+                    on_progress=lambda step: bar.update(1, current_item=step),
+                    project_context=project_context,
+                    accepted_findings=accepted,
+                )
                 bar.update(max(0, bar.length - bar.pos), current_item="Completado")
 
     report = ReportGenerator().from_agent_output(agent_text=analysis_text, scope=scope)

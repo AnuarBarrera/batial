@@ -19,6 +19,8 @@ class Finding:
     evidence: str
     recommendation: str
     tool: str = ""
+    status: str = ""           # "" = activo, "accepted" = aceptado formalmente
+    accepted_reason: str = ""
 
 @dataclass
 class SecurityReport:
@@ -29,8 +31,9 @@ class SecurityReport:
     next_steps: list[str] = field(default_factory=list)
 
     def summary(self) -> dict:
+        active = [f for f in self.findings if f.status != "accepted"]
         counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0}
-        for f in self.findings:
+        for f in active:
             if f.severity in counts:
                 counts[f.severity] += 1
-        return {"total": len(self.findings), **counts}
+        return {"total": len(active), **counts}

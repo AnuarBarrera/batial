@@ -76,6 +76,8 @@ def _extract_findings(text: str) -> tuple[str, list[Finding]]:
             severity=_normalize_severity(str(item.get("severity", "Low"))),
             evidence=item.get("evidence", ""),
             recommendation=item.get("recommendation", ""),
+            status=item.get("status", ""),
+            accepted_reason=item.get("accepted_reason", ""),
         )
         for i, item in enumerate(data, 1)
         if isinstance(item, dict)
@@ -98,14 +100,15 @@ def format_report_text(report: SecurityReport) -> str:
         "",
     ]
 
-    sorted_findings = sorted(
-        report.findings,
-        key=lambda f: SEVERITY_ORDER.index(f.severity) if f.severity in SEVERITY_ORDER else 99,
-    )
+    def _sort_key(f: Finding) -> int:
+        return SEVERITY_ORDER.index(f.severity) if f.severity in SEVERITY_ORDER else 99
 
-    if sorted_findings:
+    active = sorted([f for f in report.findings if f.status != "accepted"], key=_sort_key)
+    accepted = sorted([f for f in report.findings if f.status == "accepted"], key=_sort_key)
+
+    if active:
         lines += ["HALLAZGOS", "-" * 40]
-        for f in sorted_findings:
+        for f in active:
             lines += [
                 f"  [{f.id}] {f.title}",
                 f"  Severidad: {f.severity}",
@@ -117,7 +120,7 @@ def format_report_text(report: SecurityReport) -> str:
     if report.analysis_text:
         lines += ["ANÁLISIS DEL AGENTE", "-" * 40, report.analysis_text, ""]
 
-    urgent = [f for f in sorted_findings if f.severity in ("Critical", "High")]
+    urgent = [f for f in active if f.severity in ("Critical", "High")]
     lines += ["PRÓXIMOS PASOS", "-" * 40]
     if report.next_steps:
         for i, step in enumerate(report.next_steps, 1):
@@ -127,6 +130,18 @@ def format_report_text(report: SecurityReport) -> str:
             lines.append(f"  {i}. [{f.severity}] {f.recommendation}")
     else:
         lines.append("  Sin hallazgos críticos o altos que requieran acción inmediata.")
+
+    if accepted:
+        lines += ["", "HALLAZGOS ACEPTADOS", "-" * 40]
+        lines.append("  (Revisados y aprobados formalmente — excluidos de próximos pasos)")
+        lines.append("")
+        for f in accepted:
+            reason = f.accepted_reason or "sin razón registrada"
+            lines += [
+                f"  [{f.id}] {f.title}  [{f.severity}]",
+                f"  Razón: {reason}",
+                "",
+            ]
 
     lines += ["", "=" * 60]
     return "\n".join(lines)
