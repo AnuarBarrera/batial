@@ -11,6 +11,7 @@ from cybersec.infrastructure.tracing import RunTracer
 from cybersec.application.agent import SecurityAgent
 from cybersec.application.context_loader import load_project_context, load_exceptions
 from cybersec.application.report import ReportGenerator, format_report_text
+from cybersec.application.patcher import PatchProposer, write_patch_files
 
 
 _COST_PER_1M = {
@@ -109,14 +110,23 @@ def cli():
 @click.option("--exceptions-file", default=None,
               help="Archivo .md con hallazgos aceptados a nivel de host (puertos, infra). "
                    "Para excepciones de código coloca .cybersec-exceptions.md en --code-dir.")
+@click.option("--propose-patches", is_flag=True, default=False,
+              help="Genera propuestas de parche (Fase 2a) para hallazgos remediables "
+                   "con archivo identificado. Requiere --code-dir.")
+@click.option("--patch-dir", default=None,
+              help="Directorio donde guardar los .patch generados. "
+                   "Default: ./patches (solo si --propose-patches).")
 def scan(host, logs, code_dir, types, email, adapter, model, audit_model, location,
-         trace_dir, max_iterations, verbose, exceptions_file):
+         trace_dir, max_iterations, verbose, exceptions_file, propose_patches, patch_dir):
     """Ejecuta un análisis de seguridad en el sistema."""
     warnings = check_preconditions()
     for warning in warnings:
         click.echo(click.style(f"⚠️  {warning}", fg="yellow"))
     if warnings:
         click.echo()
+
+    if propose_patches and not code_dir:
+        raise click.UsageError("--propose-patches requiere --code-dir")
 
     scope = ScanScope(
         target_host=host,
@@ -199,7 +209,14 @@ def scan(host, logs, code_dir, types, email, adapter, model, audit_model, locati
                 bar.update(max(0, bar.length - bar.pos), current_item="Completado")
 
     report = ReportGenerator().from_agent_output(agent_text=analysis_text, scope=scope)
-    report_text = format_report_text(report)
+
+    patch_paths = {}
+    if propose_patches:
+        patch_adapter = audit_llm or llm
+        PatchProposer(patch_adapter, registry).propose_all(report.findings, code_dir)
+        patch_paths = write_patch_files(report.findings, patch_dir or "./patches")
+
+    report_text = format_report_text(report, patch_paths=patch_paths)
     click.echo("\n" + report_text)
 
     _print_token_summary(token_usage, adapter, model)

@@ -121,3 +121,102 @@ def test_scan_does_not_create_trace_file_by_default(
     assert result.exit_code == 0, result.output
     _, kwargs = mock_agent_cls.call_args
     assert kwargs["tracer"] is None
+
+
+@patch("cybersec.cli.check_preconditions", return_value=[])
+@patch("cybersec.cli.get_registry", return_value={})
+@patch("cybersec.cli._build_adapter")
+@patch("cybersec.cli.SecurityAgent")
+@patch("cybersec.cli.PatchProposer")
+@patch("cybersec.cli.write_patch_files", return_value={})
+def test_scan_does_not_call_patch_proposer_by_default(
+    mock_write_patches, mock_patch_proposer_cls, mock_agent_cls, mock_build_adapter, mock_get_registry, mock_check
+):
+    mock_agent = MagicMock()
+    from cybersec.domain.llm_adapter import TokenUsage
+    mock_agent.run.return_value = (
+        "Reporte.\nHALLAZGOS_JSON:\n```json\n[]\n```\nPRÓXIMOS PASOS:\n1. Nada.",
+        TokenUsage(),
+    )
+    mock_agent_cls.return_value = mock_agent
+
+    from cybersec.cli import cli
+    runner = CliRunner()
+    result = runner.invoke(cli, ["scan"])
+
+    assert result.exit_code == 0, result.output
+    mock_patch_proposer_cls.assert_not_called()
+    mock_write_patches.assert_not_called()
+
+
+@patch("cybersec.cli.check_preconditions", return_value=[])
+@patch("cybersec.cli.get_registry", return_value={})
+@patch("cybersec.cli._build_adapter")
+@patch("cybersec.cli.SecurityAgent")
+@patch("cybersec.cli.PatchProposer")
+@patch("cybersec.cli.write_patch_files", return_value={"F001": "/tmp/patches/F001-x.patch"})
+def test_scan_calls_patch_proposer_when_flag_given(
+    mock_write_patches, mock_patch_proposer_cls, mock_agent_cls, mock_build_adapter, mock_get_registry, mock_check, tmp_path
+):
+    mock_agent = MagicMock()
+    from cybersec.domain.llm_adapter import TokenUsage
+    mock_agent.run.return_value = (
+        "Reporte.\nHALLAZGOS_JSON:\n```json\n[]\n```\nPRÓXIMOS PASOS:\n1. Nada.",
+        TokenUsage(),
+    )
+    mock_agent_cls.return_value = mock_agent
+    mock_proposer = MagicMock()
+    mock_patch_proposer_cls.return_value = mock_proposer
+
+    from cybersec.cli import cli
+    runner = CliRunner()
+    result = runner.invoke(cli, ["scan", "--code-dir", str(tmp_path), "--propose-patches"])
+
+    assert result.exit_code == 0, result.output
+    mock_patch_proposer_cls.assert_called_once()
+    mock_proposer.propose_all.assert_called_once()
+    args, kwargs = mock_write_patches.call_args
+    assert args[1] == "./patches"
+
+
+@patch("cybersec.cli.check_preconditions", return_value=[])
+@patch("cybersec.cli.get_registry", return_value={})
+@patch("cybersec.cli._build_adapter")
+@patch("cybersec.cli.SecurityAgent")
+def test_scan_propose_patches_without_code_dir_is_usage_error(
+    mock_agent_cls, mock_build_adapter, mock_get_registry, mock_check
+):
+    from cybersec.cli import cli
+    runner = CliRunner()
+    result = runner.invoke(cli, ["scan", "--propose-patches"])
+
+    assert result.exit_code != 0
+    assert "--code-dir" in result.output
+
+
+@patch("cybersec.cli.check_preconditions", return_value=[])
+@patch("cybersec.cli.get_registry", return_value={})
+@patch("cybersec.cli._build_adapter")
+@patch("cybersec.cli.SecurityAgent")
+@patch("cybersec.cli.PatchProposer")
+@patch("cybersec.cli.write_patch_files", return_value={})
+def test_scan_uses_custom_patch_dir(
+    mock_write_patches, mock_patch_proposer_cls, mock_agent_cls, mock_build_adapter, mock_get_registry, mock_check, tmp_path
+):
+    mock_agent = MagicMock()
+    from cybersec.domain.llm_adapter import TokenUsage
+    mock_agent.run.return_value = (
+        "Reporte.\nHALLAZGOS_JSON:\n```json\n[]\n```\nPRÓXIMOS PASOS:\n1. Nada.",
+        TokenUsage(),
+    )
+    mock_agent_cls.return_value = mock_agent
+    mock_patch_proposer_cls.return_value = MagicMock()
+
+    from cybersec.cli import cli
+    runner = CliRunner()
+    custom_dir = str(tmp_path / "mis-parches")
+    result = runner.invoke(cli, ["scan", "--code-dir", str(tmp_path), "--propose-patches", "--patch-dir", custom_dir])
+
+    assert result.exit_code == 0, result.output
+    args, kwargs = mock_write_patches.call_args
+    assert args[1] == custom_dir
