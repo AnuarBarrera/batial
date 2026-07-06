@@ -78,6 +78,7 @@ def _extract_findings(text: str) -> tuple[str, list[Finding]]:
             recommendation=item.get("recommendation", ""),
             status=item.get("status", ""),
             accepted_reason=item.get("accepted_reason", ""),
+            file_path=item.get("file_path", ""),
         )
         for i, item in enumerate(data, 1)
         if isinstance(item, dict)

@@ -128,6 +128,28 @@ def test_extract_findings_normalizes_spanish_severity():
     assert findings[0].severity == "Low"
 
 
+def test_extract_findings_parses_file_path_when_present():
+    text = (
+        "HALLAZGOS_JSON:\n"
+        "```json\n"
+        '[{"title": "X", "severity": "High", "evidence": "e", "recommendation": "r", "file_path": "core/auth.py"}]\n'
+        "```\n"
+    )
+    _, findings = _extract_findings(text)
+    assert findings[0].file_path == "core/auth.py"
+
+
+def test_extract_findings_defaults_file_path_to_empty_when_absent():
+    text = (
+        "HALLAZGOS_JSON:\n"
+        "```json\n"
+        '[{"title": "X", "severity": "High", "evidence": "e", "recommendation": "r"}]\n'
+        "```\n"
+    )
+    _, findings = _extract_findings(text)
+    assert findings[0].file_path == ""
+
+
 def test_extract_findings_handles_invalid_json():
     text = "HALLAZGOS_JSON:\n```json\nesto no es json\n```\n"
     main, findings = _extract_findings(text)
