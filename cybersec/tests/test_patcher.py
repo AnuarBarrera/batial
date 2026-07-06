@@ -107,3 +107,29 @@ def test_propose_all_isolates_failures_between_findings(tmp_path):
     PatchProposer(adapter, {"read_code_snippet": _read_tool()}).propose_all([bad, ok], str(tmp_path))
     assert bad.patch_status == "not_applicable"
     assert ok.patch_status == "proposed"
+
+
+def test_propose_all_marks_not_applicable_for_path_outside_code_directory(tmp_path):
+    code_dir = tmp_path / "project"
+    code_dir.mkdir()
+    outside_file = tmp_path / "outside.py"
+    outside_file.write_text("password = '123'")
+    finding = Finding("F001", "X", "High", "e", "r", file_path="../outside.py")
+    adapter = _adapter()
+    PatchProposer(adapter, {"read_code_snippet": _read_tool()}).propose_all([finding], str(code_dir))
+    assert finding.patch_status == "not_applicable"
+    adapter.chat.assert_not_called()
+
+
+def test_propose_all_marks_error_when_read_tool_raises_and_isolates_next_finding(tmp_path):
+    (tmp_path / "auth.py").write_text("password = '123'")
+    failing = Finding("F001", "X", "Critical", "e", "r", file_path="auth.py")
+    ok = Finding("F002", "OK", "Critical", "e", "r", file_path="auth.py")
+    raising_tool = MagicMock()
+    raising_tool.execute.side_effect = RuntimeError("disk error")
+    adapter = _adapter(response_content=_json_response(diff="--- a/x\n+++ b/x", explanation="ok"))
+    PatchProposer(adapter, {"read_code_snippet": raising_tool}).propose_all([failing, ok], str(tmp_path))
+    assert failing.patch_status == "error"
+    # ok would also error because it shares the same raising tool, but the point is propose_all
+    # doesn't crash and processes both findings
+    assert ok.patch_status == "error"

@@ -66,17 +66,18 @@ class PatchProposer:
         if read_tool is None:
             finding.patch_status = "not_applicable"
             return
-        result = read_tool.execute(file_path=str(full_path))
-        if not result.success:
-            finding.patch_status = "not_applicable"
-            return
 
-        prompt = _PATCH_PROMPT.format(
-            title=finding.title, severity=finding.severity,
-            evidence=finding.evidence, recommendation=finding.recommendation,
-            file_path=finding.file_path, file_content=result.content,
-        )
         try:
+            result = read_tool.execute(file_path=str(full_path))
+            if not result.success:
+                finding.patch_status = "not_applicable"
+                return
+
+            prompt = _PATCH_PROMPT.format(
+                title=finding.title, severity=finding.severity,
+                evidence=finding.evidence, recommendation=finding.recommendation,
+                file_path=finding.file_path, file_content=result.content,
+            )
             response = self._adapter.chat([Message(role="user", content=prompt)])
             data = _parse_json_block(response.content or "")
             diff = (data or {}).get("diff", "").strip()
@@ -95,4 +96,11 @@ class PatchProposer:
         candidate = Path(file_path)
         if not candidate.is_absolute():
             candidate = Path(code_directory) / file_path
-        return candidate if candidate.is_file() else None
+        try:
+            resolved = candidate.resolve()
+            base = Path(code_directory).resolve()
+        except OSError:
+            return None
+        if not resolved.is_relative_to(base):
+            return None
+        return resolved if resolved.is_file() else None
