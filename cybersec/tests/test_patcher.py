@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 from cybersec.domain.entities import Finding
 from cybersec.domain.llm_adapter import Message
 from cybersec.domain.tools import ToolResult
-from cybersec.application.patcher import PatchProposer
+from cybersec.application.patcher import PatchProposer, write_patch_files
 
 
 def _adapter(response_content=None, raise_exc=None):
@@ -133,3 +133,21 @@ def test_propose_all_marks_error_when_read_tool_raises_and_isolates_next_finding
     # ok would also error because it shares the same raising tool, but the point is propose_all
     # doesn't crash and processes both findings
     assert ok.patch_status == "error"
+
+
+def test_write_patch_files_creates_dir_and_writes_diff(tmp_path):
+    finding = Finding("F001", "Password en texto plano", "Critical", "e", "r")
+    finding.patch_status = "proposed"
+    finding.patch_diff = "--- a/auth.py\n+++ b/auth.py\n@@ -1 +1 @@\n-old\n+new"
+    patch_dir = tmp_path / "patches"
+    paths = write_patch_files([finding], str(patch_dir))
+    expected_path = patch_dir / "F001-password-en-texto-plano.patch"
+    assert paths == {"F001": str(expected_path)}
+    assert expected_path.read_text().startswith("--- a/auth.py")
+
+
+def test_write_patch_files_skips_non_proposed_findings(tmp_path):
+    finding = Finding("F001", "X", "High", "e", "r")
+    paths = write_patch_files([finding], str(tmp_path / "patches"))
+    assert paths == {}
+    assert not (tmp_path / "patches").exists()

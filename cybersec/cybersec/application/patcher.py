@@ -104,3 +104,25 @@ class PatchProposer:
         if not resolved.is_relative_to(base):
             return None
         return resolved if resolved.is_file() else None
+
+
+def _slugify(text: str, max_len: int = 40) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return slug[:max_len].rstrip("-") or "patch"
+
+
+def write_patch_files(findings: list[Finding], patch_dir: str) -> dict[str, str]:
+    proposed = [f for f in findings if f.patch_status == "proposed"]
+    if not proposed:
+        return {}
+    Path(patch_dir).mkdir(parents=True, exist_ok=True)
+    paths = {}
+    for finding in proposed:
+        filename = f"{finding.id}-{_slugify(finding.title)}.patch"
+        full_path = Path(patch_dir) / filename
+        content = finding.patch_diff
+        if not content.endswith("\n"):
+            content += "\n"
+        full_path.write_text(content)
+        paths[finding.id] = str(full_path)
+    return paths
