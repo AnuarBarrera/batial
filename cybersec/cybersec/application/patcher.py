@@ -123,6 +123,6 @@ def write_patch_files(findings: list[Finding], patch_dir: str) -> dict[str, str]
         content = finding.patch_diff
         if not content.endswith("\n"):
             content += "\n"
-        full_path.write_text(content)
+        full_path.write_text(content, encoding="utf-8")
         paths[finding.id] = str(full_path)
     return paths
