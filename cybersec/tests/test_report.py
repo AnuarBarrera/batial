@@ -258,3 +258,26 @@ def test_extract_next_steps_logs_warning_when_header_not_found(caplog):
     with caplog.at_level(logging.WARNING, logger="cybersec.application.report"):
         _extract_next_steps(text)
     assert any("PRÓXIMOS PASOS" in r.message for r in caplog.records)
+
+
+def test_format_report_text_shows_proposed_patches_section():
+    scope = ScanScope(target_host="localhost")
+    finding = Finding("F001", "Password en texto plano", "Critical", "e", "r", file_path="core/auth.py")
+    finding.patch_status = "proposed"
+    finding.patch_diff = "--- a/core/auth.py\n+++ b/core/auth.py\n@@ -1 +1 @@\n-old\n+new"
+    finding.patch_explanation = "Hashea la contraseña"
+    report = SecurityReport(findings=[finding], scope=scope, generated_at=datetime(2026, 6, 9), analysis_text="Diagnóstico.")
+    text = format_report_text(report, patch_paths={"F001": "patches/F001-password.patch"})
+    assert "PARCHES PROPUESTOS" in text
+    assert "Archivo: core/auth.py" in text
+    assert "Guardado en: patches/F001-password.patch" in text
+    assert "Hashea la contraseña" in text
+    assert "+new" in text
+
+
+def test_format_report_text_omits_patches_section_when_none_proposed():
+    scope = ScanScope(target_host="localhost")
+    finding = Finding("F001", "X", "High", "e", "r")
+    report = SecurityReport(findings=[finding], scope=scope, generated_at=datetime(2026, 6, 9), analysis_text="Diagnóstico.")
+    text = format_report_text(report)
+    assert "PARCHES PROPUESTOS" not in text
