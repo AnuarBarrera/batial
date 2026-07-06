@@ -21,6 +21,10 @@ class Finding:
     tool: str = ""
     status: str = ""           # "" = activo, "accepted" = aceptado formalmente
     accepted_reason: str = ""
+    file_path: str = ""         # ruta del archivo afectado (Fase 2a, la llena el LLM)
+    patch_diff: str = ""        # unified diff propuesto (Fase 2a, lo llena PatchProposer)
+    patch_explanation: str = "" # explicación en lenguaje no técnico
+    patch_status: str = ""      # "" | "proposed" | "not_applicable" | "error"
 
 @dataclass
 class SecurityReport:

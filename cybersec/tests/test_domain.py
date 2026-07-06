@@ -48,3 +48,18 @@ def test_base_tool_error_helper():
     assert r.success is False
     assert r.tool_name == "dummy"
     assert r.error == "fallo"
+
+def test_finding_patch_fields_default_empty():
+    f = Finding(id="F001", title="X", severity="High", evidence="e", recommendation="r")
+    assert f.file_path == ""
+    assert f.patch_diff == ""
+    assert f.patch_explanation == ""
+    assert f.patch_status == ""
+
+def test_finding_accepts_patch_fields():
+    f = Finding(
+        id="F001", title="X", severity="High", evidence="e", recommendation="r",
+        file_path="core/auth.py", patch_diff="--- a/x\n+++ b/x", patch_status="proposed",
+    )
+    assert f.file_path == "core/auth.py"
+    assert f.patch_status == "proposed"
