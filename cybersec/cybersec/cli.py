@@ -45,7 +45,8 @@ def _print_token_summary(usage, adapter: str, model: str | None) -> None:
     click.echo("─" * 60)
 
 
-def _build_adapter(adapter_name: str, model: str = None, temperature: float = None, location: str = None):
+def _build_adapter(adapter_name: str, model: str = None, temperature: float = None, location: str = None,
+                    top_p: float = None, top_k: int = None):
     if adapter_name == "anthropic-vertex":
         from cybersec.infrastructure.adapters.anthropic_vertex import AnthropicVertexAdapter
         return AnthropicVertexAdapter(
@@ -61,12 +62,15 @@ def _build_adapter(adapter_name: str, model: str = None, temperature: float = No
             temperature=temperature,
             project=config.GOOGLE_CLOUD_PROJECT,
             location=location or config.GOOGLE_CLOUD_LOCATION,
+            top_p=top_p,
+            top_k=top_k,
         )
     elif adapter_name == "gemini":
         from cybersec.infrastructure.adapters.gemini import GeminiAdapter
         if not config.GEMINI_API_KEY:
             raise click.UsageError("GEMINI_API_KEY no configurada en .env")
-        return GeminiAdapter(api_key=config.GEMINI_API_KEY, model=model or config.GEMINI_MODEL, temperature=temperature)
+        return GeminiAdapter(api_key=config.GEMINI_API_KEY, model=model or config.GEMINI_MODEL, temperature=temperature,
+                              top_p=top_p, top_k=top_k)
     else:
         from cybersec.infrastructure.adapters.openai_compat import OpenAICompatAdapter
         if not config.OPENAI_COMPAT_BASE_URL:
@@ -105,8 +109,8 @@ def cli():
 @click.option("--exceptions-file", default=None,
               help="Archivo .md con hallazgos aceptados a nivel de host (puertos, infra). "
                    "Para excepciones de código coloca .cybersec-exceptions.md en --code-dir.")
-def scan(host, logs, code_dir, types, email, adapter, model, audit_model, location, trace_dir,
-         max_iterations, verbose, exceptions_file):
+def scan(host, logs, code_dir, types, email, adapter, model, audit_model, location,
+         trace_dir, max_iterations, verbose, exceptions_file):
     """Ejecuta un análisis de seguridad en el sistema."""
     warnings = check_preconditions()
     for warning in warnings:
@@ -128,11 +132,14 @@ def scan(host, logs, code_dir, types, email, adapter, model, audit_model, locati
         click.echo(f"   Logs: {', '.join(logs)}")
     click.echo()
 
-    llm = _build_adapter(adapter, model=model, location=location)
+    # temperature=0.0 + top_k=1: confirmado empíricamente (ver analisis.txt) que
+    # estabiliza el primer batch de tool calls y reduce la varianza de hallazgos
+    # entre corridas frente al muestreo por defecto del modelo.
+    llm = _build_adapter(adapter, model=model, location=location, temperature=0.0, top_k=1)
     if adapter == "gemini":
-        audit_llm = _build_adapter("gemini", model=audit_model or config.GEMINI_AUDIT_MODEL, temperature=0.0)
+        audit_llm = _build_adapter("gemini", model=audit_model or config.GEMINI_AUDIT_MODEL, temperature=0.0, top_k=1)
     elif adapter == "vertex":
-        audit_llm = _build_adapter("vertex", model=audit_model or config.GEMINI_VERTEX_AUDIT_MODEL, temperature=0.0, location=location)
+        audit_llm = _build_adapter("vertex", model=audit_model or config.GEMINI_VERTEX_AUDIT_MODEL, temperature=0.0, location=location, top_k=1)
     elif adapter == "anthropic-vertex":
         audit_llm = _build_adapter("anthropic-vertex", model=audit_model or config.ANTHROPIC_VERTEX_AUDIT_MODEL, temperature=0.0, location=location)
     else:

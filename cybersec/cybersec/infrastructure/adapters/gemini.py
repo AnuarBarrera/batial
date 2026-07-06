@@ -34,12 +34,15 @@ def _to_fn_declaration(spec: dict) -> types.FunctionDeclaration:
 
 class GeminiAdapter(LLMAdapter):
     def __init__(self, api_key: str = "", model: str = "gemini-3.1-flash-lite",
-                 temperature: float = None, project: str = "", location: str = "us-west4"):
+                 temperature: float = None, project: str = "", location: str = "us-west4",
+                 top_p: float = None, top_k: int = None):
         self._api_key = api_key
         self._model = model
         self._temperature = temperature
         self._project = project
         self._location = location
+        self._top_p = top_p
+        self._top_k = top_k
 
     def _client(self) -> genai.Client:
         if self._project:
@@ -80,6 +83,10 @@ class GeminiAdapter(LLMAdapter):
         cfg_kwargs = {"system_instruction": _SYSTEM}
         if self._temperature is not None:
             cfg_kwargs["temperature"] = self._temperature
+        if self._top_p is not None:
+            cfg_kwargs["top_p"] = self._top_p
+        if self._top_k is not None:
+            cfg_kwargs["top_k"] = self._top_k
         if tools:
             cfg_kwargs["tools"] = [types.Tool(function_declarations=[_to_fn_declaration(t) for t in tools])]
             if len(messages) == 1:
