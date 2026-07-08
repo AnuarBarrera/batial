@@ -1,5 +1,5 @@
 # cybersec/tests/test_agent.py
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 from cybersec.domain.llm_adapter import Message
 from cybersec.domain.entities import ScanScope
 from cybersec.domain.tools import ToolResult
@@ -459,7 +459,7 @@ def test_prefetch_filters_reads_and_traces_mandatory_files():
     assert "core/views.py" not in result
     assert read_tool.execute.call_count == 4
 
-    list_tool.execute.assert_called_once_with(directory="/tmp/proyecto")
+    list_tool.execute.assert_called_once_with(directory="/tmp/proyecto", code_directory="/tmp/proyecto")
     list_content_length = len(list_tool.execute.return_value.content)
     tracer.record.assert_any_call(
         "tool_result", iteration=0, name="list_code_files",
@@ -599,3 +599,89 @@ def test_run_includes_prefetched_mandatory_files_in_initial_prompt():
     assert "ARCHIVOS DE SEGURIDAD OBLIGATORIOS" in sent_messages[0].content
     assert "auth_service.py" in sent_messages[0].content
     assert "'password': password," in sent_messages[0].content
+
+
+def test_agent_injects_code_directory_into_read_code_snippet_calls():
+    adapter = _adapter(
+        Message(role="assistant", content="", tool_calls=[
+            {"name": "read_code_snippet", "args": {"file_path": "/tmp/proyecto/app.py"}},
+        ]),
+        Message(role="assistant", content="Listo."),
+    )
+    tool = _tool("read_code_snippet", "contenido")
+    agent = SecurityAgent(adapter=adapter, tool_registry={"read_code_snippet": tool})
+    agent.run(ScanScope("localhost", code_directory="/tmp/proyecto"))
+    tool.execute.assert_called_once_with(file_path="/tmp/proyecto/app.py", code_directory="/tmp/proyecto")
+
+
+def test_agent_injects_code_directory_into_list_code_files_calls():
+    # nota: con code_directory configurado, el prefetch automático también
+    # llama a list_code_files una vez antes del loop principal — se usa un
+    # subdirectorio distinto en el tool_call del LLM para distinguir ambas
+    # llamadas sin depender del orden.
+    adapter = _adapter(
+        Message(role="assistant", content="", tool_calls=[
+            {"name": "list_code_files", "args": {"directory": "/tmp/proyecto/sub"}},
+        ]),
+        Message(role="assistant", content="Listo."),
+    )
+    tool = _tool("list_code_files", "app.py")
+    agent = SecurityAgent(adapter=adapter, tool_registry={"list_code_files": tool})
+    agent.run(ScanScope("localhost", code_directory="/tmp/proyecto"))
+    assert call(directory="/tmp/proyecto/sub", code_directory="/tmp/proyecto") in tool.execute.call_args_list
+
+
+def test_agent_overrides_llm_supplied_code_directory_to_prevent_spoofing():
+    adapter = _adapter(
+        Message(role="assistant", content="", tool_calls=[
+            {"name": "read_code_snippet", "args": {
+                "file_path": "/tmp/proyecto/app.py", "code_directory": "/",
+            }},
+        ]),
+        Message(role="assistant", content="Listo."),
+    )
+    tool = _tool("read_code_snippet", "contenido")
+    agent = SecurityAgent(adapter=adapter, tool_registry={"read_code_snippet": tool})
+    agent.run(ScanScope("localhost", code_directory="/tmp/proyecto"))
+    tool.execute.assert_called_once_with(file_path="/tmp/proyecto/app.py", code_directory="/tmp/proyecto")
+
+
+def test_agent_does_not_inject_code_directory_for_other_tools():
+    adapter = _adapter(
+        Message(role="assistant", content="", tool_calls=[{"name": "check_configs", "args": {}}]),
+        Message(role="assistant", content="Listo."),
+    )
+    tool = _tool("check_configs", "ok")
+    agent = SecurityAgent(adapter=adapter, tool_registry={"check_configs": tool})
+    agent.run(ScanScope("localhost", code_directory="/tmp/proyecto"))
+    tool.execute.assert_called_once_with()
+
+
+def test_agent_does_not_inject_code_directory_when_scope_has_none():
+    adapter = _adapter(
+        Message(role="assistant", content="", tool_calls=[
+            {"name": "read_code_snippet", "args": {"file_path": "/tmp/proyecto/app.py"}},
+        ]),
+        Message(role="assistant", content="Listo."),
+    )
+    tool = _tool("read_code_snippet", "contenido")
+    agent = SecurityAgent(adapter=adapter, tool_registry={"read_code_snippet": tool})
+    agent.run(ScanScope("localhost"))
+    tool.execute.assert_called_once_with(file_path="/tmp/proyecto/app.py")
+
+
+def test_prefetch_scopes_list_and_read_calls_to_code_directory():
+    list_tool = _tool("list_code_files", "/tmp/proyecto/settings.py")
+    read_tool = MagicMock()
+    read_tool.execute.return_value = ToolResult(
+        content="# settings.py\n```python\nDEBUG = True\n```",
+        tool_name="read_code_snippet", success=True,
+        metadata={"file_path": "/tmp/proyecto/settings.py", "lines": 1, "truncated": False},
+    )
+    adapter = _adapter(Message(role="assistant", content="Sistema seguro."))
+    agent = SecurityAgent(adapter=adapter, tool_registry={
+        "list_code_files": list_tool, "read_code_snippet": read_tool,
+    })
+    agent.run(ScanScope("localhost", code_directory="/tmp/proyecto"))
+    list_tool.execute.assert_called_once_with(directory="/tmp/proyecto", code_directory="/tmp/proyecto")
+    read_tool.execute.assert_called_once_with(file_path="/tmp/proyecto/settings.py", code_directory="/tmp/proyecto")

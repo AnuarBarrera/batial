@@ -8,6 +8,8 @@ from cybersec.infrastructure.tools.registry import get_tool_schemas
 
 logger = logging.getLogger(__name__)
 
+_SCOPED_TOOLS = {"read_code_snippet", "list_code_files"}
+
 MANDATORY_FILE_PATTERNS = [
     "*settings*", "*config*",
     "*auth*", "*login*", "*password*", "*credential*",
@@ -161,7 +163,7 @@ class SecurityAgent:
         if list_tool is None:
             return ""
 
-        list_result = list_tool.execute(directory=code_directory)
+        list_result = list_tool.execute(directory=code_directory, code_directory=code_directory)
         self._trace(
             "tool_result", iteration=0, name="list_code_files",
             args={"directory": code_directory}, success=list_result.success,
@@ -192,7 +194,7 @@ class SecurityAgent:
             if read_tool is None:
                 sections.append(f"# {path}\n(error al leer este archivo: herramienta read_code_snippet no disponible)")
                 continue
-            result = read_tool.execute(file_path=path)
+            result = read_tool.execute(file_path=path, code_directory=code_directory)
             self._trace(
                 "tool_result", iteration=0, name="read_code_snippet",
                 args={"file_path": path}, success=result.success,
@@ -277,6 +279,11 @@ class SecurityAgent:
 
             for tc in response.tool_calls:
                 name, args = tc["name"], tc.get("args", {})
+                if name in _SCOPED_TOOLS and scope.code_directory:
+                    # Confinamiento de seguridad: nunca confiar en un code_directory
+                    # que el LLM pudiera intentar inyectar por su cuenta — siempre se
+                    # sobreescribe con el scope real de la corrida.
+                    args = {**args, "code_directory": scope.code_directory}
                 notify(f"Ejecutando {name}...")
                 tool = self._registry.get(name)
                 success = False

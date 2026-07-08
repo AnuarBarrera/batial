@@ -22,6 +22,15 @@ def _is_allowed(path: Path) -> bool:
     return path.suffix.lower() in ALLOWED_EXTENSIONS or _is_env_file(path)
 
 
+def _within_directory(path: Path, base_directory: str) -> bool:
+    try:
+        resolved = path.resolve()
+        base = Path(base_directory).resolve()
+    except OSError:
+        return False
+    return resolved.is_relative_to(base)
+
+
 def _redact_env_values(content: str) -> str:
     lines = []
     for line in content.splitlines():
@@ -46,8 +55,10 @@ def _redact_env_values(content: str) -> str:
 class CodeReaderTool(BaseTool):
     name = "read_code_snippet"
 
-    def execute(self, file_path: str = "", **kwargs) -> ToolResult:
+    def execute(self, file_path: str = "", code_directory: str = None, **kwargs) -> ToolResult:
         path = Path(file_path)
+        if code_directory is not None and not _within_directory(path, code_directory):
+            return self._error(f"Ruta fuera del directorio de código analizado: {file_path}")
         if not path.exists():
             return self._error(f"Archivo no existe: {file_path}")
         if not _is_allowed(path):
@@ -80,8 +91,10 @@ class CodeReaderTool(BaseTool):
 class ListCodeFilesTool(BaseTool):
     name = "list_code_files"
 
-    def execute(self, directory: str = "", **kwargs) -> ToolResult:
+    def execute(self, directory: str = "", code_directory: str = None, **kwargs) -> ToolResult:
         path = Path(directory)
+        if code_directory is not None and not _within_directory(path, code_directory):
+            return self._error(f"Directorio fuera del alcance analizado: {directory}")
         if not path.is_dir():
             return self._error(f"Directorio no existe: {directory}")
 
