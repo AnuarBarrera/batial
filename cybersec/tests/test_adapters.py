@@ -192,6 +192,38 @@ def test_gemini_chat_omits_temperature_by_default(mock_genai):
     assert config.temperature is None
 
 
+@patch("cybersec.infrastructure.adapters.gemini.genai")
+def test_gemini_chat_passes_top_p_and_top_k_when_configured(mock_genai):
+    mock_client = MagicMock()
+    mock_genai.Client.return_value = mock_client
+    mock_resp = MagicMock()
+    mock_resp.text = "ok"
+    mock_resp.function_calls = []
+    mock_client.models.generate_content.return_value = mock_resp
+
+    GeminiAdapter(api_key="fake", top_p=0.1, top_k=1).chat([Message(role="user", content="analiza")])
+
+    config = mock_client.models.generate_content.call_args.kwargs["config"]
+    assert config.top_p == 0.1
+    assert config.top_k == 1
+
+
+@patch("cybersec.infrastructure.adapters.gemini.genai")
+def test_gemini_chat_omits_top_p_and_top_k_by_default(mock_genai):
+    mock_client = MagicMock()
+    mock_genai.Client.return_value = mock_client
+    mock_resp = MagicMock()
+    mock_resp.text = "ok"
+    mock_resp.function_calls = []
+    mock_client.models.generate_content.return_value = mock_resp
+
+    GeminiAdapter(api_key="fake").chat([Message(role="user", content="analiza")])
+
+    config = mock_client.models.generate_content.call_args.kwargs["config"]
+    assert config.top_p is None
+    assert config.top_k is None
+
+
 from cybersec.infrastructure.adapters.anthropic_vertex import AnthropicVertexAdapter, _to_anthropic_tool
 from cybersec.infrastructure.adapters.openai_compat import OpenAICompatAdapter
 

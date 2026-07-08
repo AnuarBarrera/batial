@@ -78,6 +78,7 @@ def _extract_findings(text: str) -> tuple[str, list[Finding]]:
             recommendation=item.get("recommendation", ""),
             status=item.get("status", ""),
             accepted_reason=item.get("accepted_reason", ""),
+            file_path=item.get("file_path", ""),
         )
         for i, item in enumerate(data, 1)
         if isinstance(item, dict)
@@ -85,7 +86,7 @@ def _extract_findings(text: str) -> tuple[str, list[Finding]]:
     return main_text, findings
 
 
-def format_report_text(report: SecurityReport) -> str:
+def format_report_text(report: SecurityReport, patch_paths: dict[str, str] | None = None) -> str:
     now = report.generated_at or datetime.now()
     host = report.scope.target_host if report.scope else "desconocido"
     s = report.summary()
@@ -114,6 +115,22 @@ def format_report_text(report: SecurityReport) -> str:
                 f"  Severidad: {f.severity}",
                 f"  Evidencia: {f.evidence}",
                 f"  Recomendación: {f.recommendation}",
+                "",
+            ]
+
+    proposed_patches = [f for f in active if f.patch_status == "proposed"]
+    if proposed_patches:
+        lines += ["PARCHES PROPUESTOS", "-" * 40]
+        for f in proposed_patches:
+            patch_path = (patch_paths or {}).get(f.id, "(no guardado en disco)")
+            lines += [
+                f"  [{f.id}] {f.title}",
+                f"  Archivo: {f.file_path}",
+                f"  Guardado en: {patch_path}",
+                "",
+                f"  Explicación: {f.patch_explanation}",
+                "",
+                f.patch_diff,
                 "",
             ]
 

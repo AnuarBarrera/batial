@@ -11,6 +11,7 @@ from cybersec.infrastructure.tracing import RunTracer
 from cybersec.application.agent import SecurityAgent
 from cybersec.application.context_loader import load_project_context, load_exceptions
 from cybersec.application.report import ReportGenerator, format_report_text
+from cybersec.application.patcher import PatchProposer, write_patch_files
 
 
 _COST_PER_1M = {
@@ -45,7 +46,8 @@ def _print_token_summary(usage, adapter: str, model: str | None) -> None:
     click.echo("─" * 60)
 
 
-def _build_adapter(adapter_name: str, model: str = None, temperature: float = None, location: str = None):
+def _build_adapter(adapter_name: str, model: str = None, temperature: float = None, location: str = None,
+                    top_p: float = None, top_k: int = None):
     if adapter_name == "anthropic-vertex":
         from cybersec.infrastructure.adapters.anthropic_vertex import AnthropicVertexAdapter
         return AnthropicVertexAdapter(
@@ -61,12 +63,15 @@ def _build_adapter(adapter_name: str, model: str = None, temperature: float = No
             temperature=temperature,
             project=config.GOOGLE_CLOUD_PROJECT,
             location=location or config.GOOGLE_CLOUD_LOCATION,
+            top_p=top_p,
+            top_k=top_k,
         )
     elif adapter_name == "gemini":
         from cybersec.infrastructure.adapters.gemini import GeminiAdapter
         if not config.GEMINI_API_KEY:
             raise click.UsageError("GEMINI_API_KEY no configurada en .env")
-        return GeminiAdapter(api_key=config.GEMINI_API_KEY, model=model or config.GEMINI_MODEL, temperature=temperature)
+        return GeminiAdapter(api_key=config.GEMINI_API_KEY, model=model or config.GEMINI_MODEL, temperature=temperature,
+                              top_p=top_p, top_k=top_k)
     else:
         from cybersec.infrastructure.adapters.openai_compat import OpenAICompatAdapter
         if not config.OPENAI_COMPAT_BASE_URL:
@@ -105,14 +110,23 @@ def cli():
 @click.option("--exceptions-file", default=None,
               help="Archivo .md con hallazgos aceptados a nivel de host (puertos, infra). "
                    "Para excepciones de código coloca .cybersec-exceptions.md en --code-dir.")
-def scan(host, logs, code_dir, types, email, adapter, model, audit_model, location, trace_dir,
-         max_iterations, verbose, exceptions_file):
+@click.option("--propose-patches", is_flag=True, default=False,
+              help="Genera propuestas de parche (Fase 2a) para hallazgos remediables "
+                   "con archivo identificado. Requiere --code-dir.")
+@click.option("--patch-dir", default=None,
+              help="Directorio donde guardar los .patch generados. "
+                   "Default: ./patches (solo si --propose-patches).")
+def scan(host, logs, code_dir, types, email, adapter, model, audit_model, location,
+         trace_dir, max_iterations, verbose, exceptions_file, propose_patches, patch_dir):
     """Ejecuta un análisis de seguridad en el sistema."""
     warnings = check_preconditions()
     for warning in warnings:
         click.echo(click.style(f"⚠️  {warning}", fg="yellow"))
     if warnings:
         click.echo()
+
+    if propose_patches and not code_dir:
+        raise click.UsageError("--propose-patches requiere --code-dir")
 
     scope = ScanScope(
         target_host=host,
@@ -128,11 +142,14 @@ def scan(host, logs, code_dir, types, email, adapter, model, audit_model, locati
         click.echo(f"   Logs: {', '.join(logs)}")
     click.echo()
 
-    llm = _build_adapter(adapter, model=model, location=location)
+    # temperature=0.0 + top_k=1: confirmado empíricamente (ver analisis.txt) que
+    # estabiliza el primer batch de tool calls y reduce la varianza de hallazgos
+    # entre corridas frente al muestreo por defecto del modelo.
+    llm = _build_adapter(adapter, model=model, location=location, temperature=0.0, top_k=1)
     if adapter == "gemini":
-        audit_llm = _build_adapter("gemini", model=audit_model or config.GEMINI_AUDIT_MODEL, temperature=0.0)
+        audit_llm = _build_adapter("gemini", model=audit_model or config.GEMINI_AUDIT_MODEL, temperature=0.0, top_k=1)
     elif adapter == "vertex":
-        audit_llm = _build_adapter("vertex", model=audit_model or config.GEMINI_VERTEX_AUDIT_MODEL, temperature=0.0, location=location)
+        audit_llm = _build_adapter("vertex", model=audit_model or config.GEMINI_VERTEX_AUDIT_MODEL, temperature=0.0, location=location, top_k=1)
     elif adapter == "anthropic-vertex":
         audit_llm = _build_adapter("anthropic-vertex", model=audit_model or config.ANTHROPIC_VERTEX_AUDIT_MODEL, temperature=0.0, location=location)
     else:
@@ -192,7 +209,14 @@ def scan(host, logs, code_dir, types, email, adapter, model, audit_model, locati
                 bar.update(max(0, bar.length - bar.pos), current_item="Completado")
 
     report = ReportGenerator().from_agent_output(agent_text=analysis_text, scope=scope)
-    report_text = format_report_text(report)
+
+    patch_paths = {}
+    if propose_patches:
+        patch_adapter = audit_llm or llm
+        PatchProposer(patch_adapter, registry).propose_all(report.findings, code_dir)
+        patch_paths = write_patch_files(report.findings, patch_dir or "./patches")
+
+    report_text = format_report_text(report, patch_paths=patch_paths)
     click.echo("\n" + report_text)
 
     _print_token_summary(token_usage, adapter, model)

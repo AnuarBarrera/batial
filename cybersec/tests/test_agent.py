@@ -247,6 +247,13 @@ def test_output_format_instructions_define_severity_criteria():
     assert "PERSISTEN" in text
 
 
+def test_output_format_instructions_include_file_path_field():
+    from cybersec.application.agent import _OUTPUT_FORMAT_INSTRUCTIONS
+    text = _OUTPUT_FORMAT_INSTRUCTIONS
+    assert "file_path" in text
+    assert "hallazgos de red, logs" in text.lower()
+
+
 def test_audit_prompt_checklist_aligns_secret_severity_with_persistence():
     first_response = Message(role="assistant", content="Reporte inicial.")
     audit_response = Message(role="assistant", content="Reporte auditado.")

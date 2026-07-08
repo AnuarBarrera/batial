@@ -22,3 +22,6 @@ cybersec/resultados*.txt
 # Documentación interna de tooling (no para el repo público)
 docs/superpowers/
 PRD-agente-ciberseguridad.md
+
+# Scratch de subagent-driven-development (ledger de progreso, no para el repo)
+.superpowers/
