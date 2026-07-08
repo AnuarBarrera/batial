@@ -119,3 +119,55 @@ def test_read_code_snippet_shows_redacted_note_for_env_files(tmp_path):
 def test_list_code_files_missing_directory():
     r = ListCodeFilesTool().execute(directory="/no/existe")
     assert r.success is False
+
+
+def test_reads_file_inside_code_directory(tmp_path):
+    (tmp_path / "app.py").write_text("x = 1")
+    r = CodeReaderTool().execute(file_path=str(tmp_path / "app.py"), code_directory=str(tmp_path))
+    assert r.success is True
+    assert "x = 1" in r.content
+
+
+def test_rejects_file_outside_code_directory(tmp_path):
+    code_dir = tmp_path / "project"
+    code_dir.mkdir()
+    outside = tmp_path / "secret.env"
+    outside.write_text("API_KEY=supersecret")
+    r = CodeReaderTool().execute(file_path=str(outside), code_directory=str(code_dir))
+    assert r.success is False
+    assert "supersecret" not in r.content
+
+
+def test_rejects_traversal_outside_code_directory(tmp_path):
+    code_dir = tmp_path / "project"
+    code_dir.mkdir()
+    outside = tmp_path / "secret.env"
+    outside.write_text("API_KEY=supersecret")
+    r = CodeReaderTool().execute(file_path=str(code_dir / "../secret.env"), code_directory=str(code_dir))
+    assert r.success is False
+    assert "supersecret" not in r.content
+
+
+def test_ignores_code_directory_when_not_provided(tmp_path):
+    # Compatibilidad hacia atrás: sin code_directory, no hay confinamiento (llamadas directas/tests).
+    f = tmp_path / "app.py"
+    f.write_text("x = 1")
+    r = CodeReaderTool().execute(file_path=str(f))
+    assert r.success is True
+
+
+def test_list_code_files_allows_directory_equal_to_code_directory(tmp_path):
+    (tmp_path / "app.py").write_text("x = 1")
+    r = ListCodeFilesTool().execute(directory=str(tmp_path), code_directory=str(tmp_path))
+    assert r.success is True
+    assert "app.py" in r.content
+
+
+def test_list_code_files_rejects_directory_outside_code_directory(tmp_path):
+    code_dir = tmp_path / "project"
+    code_dir.mkdir()
+    outside = tmp_path / "other"
+    outside.mkdir()
+    (outside / "secret.py").write_text("TOKEN = 'x'")
+    r = ListCodeFilesTool().execute(directory=str(outside), code_directory=str(code_dir))
+    assert r.success is False
