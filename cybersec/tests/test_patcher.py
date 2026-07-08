@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 from cybersec.domain.entities import Finding
 from cybersec.domain.llm_adapter import Message
 from cybersec.domain.tools import ToolResult
-from cybersec.application.patcher import PatchProposer, write_patch_files
+from cybersec.application.patcher import PatchProposer, write_patch_files, _fix_hunk_headers
 
 
 def _adapter(response_content=None, raise_exc=None):
@@ -151,3 +151,69 @@ def test_write_patch_files_skips_non_proposed_findings(tmp_path):
     paths = write_patch_files([finding], str(tmp_path / "patches"))
     assert paths == {}
     assert not (tmp_path / "patches").exists()
+
+
+def test_fix_hunk_headers_corrects_wrong_counts():
+    # Caso real observado: el LLM dijo "9,9" pero el cuerpo del hunk tiene 7 líneas de cada lado.
+    diff = (
+        "--- a/core/agent/tests/test_tools.py\n"
+        "+++ b/core/agent/tests/test_tools.py\n"
+        "@@ -72,9 +72,9 @@\n"
+        " \n"
+        " class TestTranscribeAudioTool:\n"
+        "-    def test_missing_file_returns_error(self):\n"
+        "+    def test_missing_file_returns_error(self, tmp_path):\n"
+        "         tool = TranscribeAudioTool()\n"
+        "-        result = tool.execute(audio_path='/tmp/nonexistent_file_abc123.ogg')\n"
+        "+        result = tool.execute(audio_path=str(tmp_path / 'nonexistent_file_abc123.ogg'))\n"
+        "         assert result.success is False\n"
+        "         assert result.error is not None\n"
+    )
+    fixed = _fix_hunk_headers(diff)
+    assert "@@ -72,7 +72,7 @@" in fixed
+    assert "@@ -72,9 +72,9 @@" not in fixed
+    # el cuerpo del hunk no debe tocarse, solo el header
+    assert "-    def test_missing_file_returns_error(self):" in fixed
+    assert "+        result = tool.execute(audio_path=str(tmp_path / 'nonexistent_file_abc123.ogg'))" in fixed
+
+
+def test_fix_hunk_headers_handles_multiple_hunks():
+    diff = (
+        "--- a/x.py\n"
+        "+++ b/x.py\n"
+        "@@ -1,5 +1,6 @@\n"
+        " a\n"
+        " b\n"
+        "+c\n"
+        " d\n"
+        " e\n"
+        "@@ -20,3 +21,2 @@\n"
+        " x\n"
+        "-y\n"
+        " z\n"
+    )
+    fixed = _fix_hunk_headers(diff)
+    assert "@@ -1,4 +1,5 @@" in fixed
+    assert "@@ -20,3 +21,2 @@" in fixed  # ya estaba bien, no cambia
+
+
+def test_fix_hunk_headers_leaves_correct_headers_unchanged():
+    diff = (
+        "--- a/auth.py\n"
+        "+++ b/auth.py\n"
+        "@@ -1,1 +1,1 @@\n"
+        "-password = plain\n"
+        "+password = hashed\n"
+    )
+    assert _fix_hunk_headers(diff) == diff
+
+
+def test_propose_all_corrects_malformed_hunk_header_from_llm(tmp_path):
+    (tmp_path / "auth.py").write_text("password = '123'")
+    finding = Finding("F001", "X", "Critical", "e", "r", file_path="auth.py")
+    # header dice "3,3" pero el cuerpo tiene solo 1 línea de cada lado — mal contado por el LLM
+    bad_diff = "--- a/auth.py\n+++ b/auth.py\n@@ -1,3 +1,3 @@\n-password = plain\n+password = hashed"
+    adapter = _adapter(response_content=_json_response(diff=bad_diff, explanation="ok"))
+    PatchProposer(adapter, {"read_code_snippet": _read_tool()}).propose_all([finding], str(tmp_path))
+    assert finding.patch_status == "proposed"
+    assert "@@ -1,1 +1,1 @@" in finding.patch_diff
