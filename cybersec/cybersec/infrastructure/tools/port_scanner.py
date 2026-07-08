@@ -6,6 +6,13 @@ from cybersec.domain.tools import BaseTool, ToolResult
 logger = logging.getLogger(__name__)
 
 _PORT_RE = re.compile(r"^(\d+)/tcp\s+open\s+(\S+)", re.MULTILINE)
+_VALID_HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.\-:_/]*$")
+
+
+def _is_safe_host(host: str) -> bool:
+    """Rechaza valores que nmap interpretaría como flags (ej. '-oN', '--script=...')
+    o que contengan espacios — host solo debe ser hostname/IP/CIDR/IPv6."""
+    return bool(host) and _VALID_HOST_RE.match(host) is not None
 
 SENSITIVE = {
     21: "FTP sin cifrado",
@@ -23,6 +30,8 @@ class PortScannerTool(BaseTool):
     name = "scan_ports"
 
     def execute(self, host: str = "localhost", **kwargs) -> ToolResult:
+        if not _is_safe_host(host):
+            return self._error(f"Host inválido: {host}")
         try:
             proc = subprocess.run(
                 ["nmap", "--top-ports", "1000", "-T4", host],

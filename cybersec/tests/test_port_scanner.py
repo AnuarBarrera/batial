@@ -35,3 +35,48 @@ def test_nmap_not_found(mock_run):
     r = PortScannerTool().execute(host="localhost")
     assert r.success is False
     assert "nmap" in r.error.lower()
+
+
+@patch("cybersec.infrastructure.tools.port_scanner.subprocess.run")
+def test_rejects_host_starting_with_dash(mock_run):
+    r = PortScannerTool().execute(host="--script=vuln")
+    assert r.success is False
+    mock_run.assert_not_called()
+
+
+@patch("cybersec.infrastructure.tools.port_scanner.subprocess.run")
+def test_rejects_host_that_looks_like_output_flag(mock_run):
+    r = PortScannerTool().execute(host="-oN")
+    assert r.success is False
+    mock_run.assert_not_called()
+
+
+@patch("cybersec.infrastructure.tools.port_scanner.subprocess.run")
+def test_rejects_host_with_space(mock_run):
+    r = PortScannerTool().execute(host="localhost --script=vuln")
+    assert r.success is False
+    mock_run.assert_not_called()
+
+
+@patch("cybersec.infrastructure.tools.port_scanner.subprocess.run")
+def test_accepts_valid_hostname(mock_run):
+    mock_run.return_value = MagicMock(returncode=0, stdout=NMAP_OUT, stderr="")
+    r = PortScannerTool().execute(host="localhost")
+    assert r.success is True
+    mock_run.assert_called_once()
+
+
+@patch("cybersec.infrastructure.tools.port_scanner.subprocess.run")
+def test_accepts_valid_ipv4(mock_run):
+    mock_run.return_value = MagicMock(returncode=0, stdout=NMAP_OUT, stderr="")
+    r = PortScannerTool().execute(host="192.168.1.1")
+    assert r.success is True
+    mock_run.assert_called_once()
+
+
+@patch("cybersec.infrastructure.tools.port_scanner.subprocess.run")
+def test_accepts_cidr_range(mock_run):
+    mock_run.return_value = MagicMock(returncode=0, stdout=NMAP_OUT, stderr="")
+    r = PortScannerTool().execute(host="192.168.1.0/24")
+    assert r.success is True
+    mock_run.assert_called_once()
