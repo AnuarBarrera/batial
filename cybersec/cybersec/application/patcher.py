@@ -36,40 +36,91 @@ la información disponible, responde con "diff": "" y explica por qué en
 "explanation"."""
 
 
-def _fix_hunk_headers(diff_text: str) -> str:
-    """Recalcula los conteos de líneas ('@@ -a,b +c,d @@') de cada hunk.
+def _relocate_hunk_start(old_body_lines: list[str], file_lines: list[str]) -> int | None:
+    """Busca old_body_lines como bloque contiguo exacto dentro de file_lines.
 
-    Los modelos generan con frecuencia diffs con el conteo de líneas mal
-    calculado en el header (aunque el contenido del hunk sea correcto),
-    lo que hace que 'git apply' rechace el parche con "corrupt patch".
-    Mantiene el número de línea inicial (a, c) tal como lo dio el LLM —
-    solo recalcula b y d contando las líneas reales del cuerpo del hunk.
+    Retorna la posición 1-indexed donde empieza si hay exactamente una
+    coincidencia; None si es ambiguo (>1 match) o no se encuentra — en
+    ambos casos el llamador debe conservar el valor que dio el LLM.
     """
+    if not old_body_lines:
+        return None
+    n = len(old_body_lines)
+    matches = [i for i in range(len(file_lines) - n + 1) if file_lines[i:i + n] == old_body_lines]
+    return matches[0] + 1 if len(matches) == 1 else None
+
+
+_TRAILING_CONTEXT_LINES = 3
+
+
+def _fix_hunk_headers(diff_text: str, original_content: str = None) -> str:
+    """Recalcula los headers ('@@ -a,b +c,d @@') de cada hunk.
+
+    Los modelos generan con frecuencia diffs con el header mal calculado
+    (aunque el contenido del hunk sea correcto), lo que hace que 'git apply'
+    rechace el parche. Tres correcciones independientes:
+
+    1. Conteo de líneas (b, d): siempre se recalcula contando las líneas
+       reales del cuerpo del hunk — nunca se confía en lo que dio el LLM.
+    2. Línea de inicio (a): si se provee original_content (el contenido real
+       del archivo antes del parche), se busca el bloque de contexto+removidas
+       del hunk dentro de ese contenido y se usa la posición real encontrada.
+       Si no se provee original_content, o el bloque no se encuentra de forma
+       inequívoca, se conserva el valor que dio el LLM (fallback seguro) — el
+       offset acumulado (c) se calcula siempre a partir de (a) más el
+       desplazamiento neto de los hunks anteriores, sea cual sea su origen.
+    3. Contexto trailing: 'git apply' rechaza un hunk que termina justo en
+       una línea +/- sin ninguna línea de contexto después, aun cuando el
+       contenido y la posición sean correctos. Si el hunk se pudo relocalizar
+       (paso 2), se completa con hasta _TRAILING_CONTEXT_LINES líneas de
+       contexto real tomadas del archivo original inmediatamente después del
+       hunk. Sin relocalización exitosa no se agrega nada — no hay forma
+       segura de saber qué línea real sigue.
+    """
+    file_lines = original_content.splitlines() if original_content is not None else None
     lines = diff_text.splitlines()
     out = []
     i = 0
+    cumulative_offset = 0
     while i < len(lines):
         match = _HUNK_HEADER_RE.match(lines[i])
         if not match:
             out.append(lines[i])
             i += 1
             continue
-        old_start, new_start, trailer = match.groups()
+        old_start, _new_start, trailer = match.groups()
+        old_start = int(old_start)
         i += 1
         old_count = 0
         new_count = 0
+        old_body_lines = []
         body = []
         while i < len(lines) and not lines[i].startswith(("@@ ", "--- ", "+++ ")):
             body_line = lines[i]
             if body_line.startswith("-"):
                 old_count += 1
+                old_body_lines.append(body_line[1:])
             elif body_line.startswith("+"):
                 new_count += 1
             elif not body_line.startswith("\\"):
                 old_count += 1
                 new_count += 1
+                old_body_lines.append(body_line[1:] if body_line.startswith(" ") else body_line)
             body.append(body_line)
             i += 1
+        relocated = _relocate_hunk_start(old_body_lines, file_lines) if file_lines is not None else None
+        if relocated is not None:
+            old_start = relocated
+            ends_without_context = not body or not body[-1].startswith(" ")
+            if ends_without_context:
+                next_line_idx = relocated - 1 + old_count  # 0-indexed, primera línea no consumida
+                trailing = file_lines[next_line_idx:next_line_idx + _TRAILING_CONTEXT_LINES]
+                for extra_line in trailing:
+                    body.append(f" {extra_line}")
+                    old_count += 1
+                    new_count += 1
+        new_start = old_start + cumulative_offset
+        cumulative_offset += new_count - old_count
         out.append(f"@@ -{old_start},{old_count} +{new_start},{new_count} @@{trailer}")
         out.extend(body)
     fixed = "\n".join(out)
@@ -116,10 +167,16 @@ class PatchProposer:
                 finding.patch_status = "not_applicable"
                 return
 
+            # Siempre relativo a code_directory en el prompt/headers del diff —
+            # un file_path absoluto (a veces el LLM lo devuelve así en
+            # HALLAZGOS_JSON) rompe 'git apply -p1' si se usa tal cual.
+            relative_path = str(full_path.relative_to(Path(code_directory).resolve()))
+            original_content = full_path.read_text(errors="replace")
+
             prompt = _PATCH_PROMPT.format(
                 title=finding.title, severity=finding.severity,
                 evidence=finding.evidence, recommendation=finding.recommendation,
-                file_path=finding.file_path, file_content=result.content,
+                file_path=relative_path, file_content=result.content,
             )
             response = self._adapter.chat([Message(role="user", content=prompt)])
             data = _parse_json_block(response.content or "")
@@ -127,7 +184,7 @@ class PatchProposer:
             if not diff:
                 finding.patch_status = "error"
                 return
-            finding.patch_diff = _fix_hunk_headers(diff)
+            finding.patch_diff = _fix_hunk_headers(diff, original_content=original_content)
             finding.patch_explanation = (data or {}).get("explanation", "")
             finding.patch_status = "proposed"
         except Exception:
