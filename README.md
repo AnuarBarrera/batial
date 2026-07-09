@@ -32,12 +32,13 @@ Usuario define scope → LLM decide tools → Tools corren en local → LLM gene
 cybersec/
 ├── cybersec/
 │   ├── domain/               # Entidades y contratos (LLMAdapter, BaseTool)
-│   ├── application/          # Loop agéntico (SecurityAgent) y generador de reportes
+│   ├── application/          # Loop agéntico (SecurityAgent), generador de reportes
+│   │                         # y PatchProposer (Fase 2a — propuesta de parche)
 │   └── infrastructure/
 │       ├── adapters/         # GeminiAdapter, OpenAICompatAdapter, AnthropicVertexAdapter
 │       ├── tools/            # Las 7 herramientas de análisis
 │       └── notifiers/        # MailgunNotifier (email)
-├── tests/                    # 155 tests con pytest
+├── tests/                    # 223 tests con pytest
 ├── .env.example
 ├── requirements.txt
 └── pytest.ini
@@ -63,6 +64,15 @@ MANDATORY_FILE_PATTERNS = [
 ```
 
 El contenido de esos archivos se inyecta como texto plano al final del prompt inicial: el LLM lo recibe ya leído, sin depender de que decida pedirlo.
+
+---
+
+## Confinamiento de herramientas al scope analizado
+
+El LLM decide los argumentos de cada tool call de forma autónoma dentro del loop agéntico — eso significa que un archivo hostil dentro del código analizado (prompt injection indirecto) podría, en teoría, instruir al modelo a leer archivos fuera de scope o manipular el escaneo de red. El prompt no es un límite de seguridad; estas dos validaciones sí lo son:
+
+- **`read_code_snippet` / `list_code_files`** solo pueden leer/listar rutas dentro de `--code-dir`. `SecurityAgent` inyecta el directorio de scope en cada llamada — sobrescribiendo cualquier valor que el propio LLM intente pasar — y ambas tools rechazan cualquier ruta que no resuelva dentro de ese directorio.
+- **`scan_ports`** valida que `host` sea un hostname/IP/CIDR/IPv6 válido antes de construir el comando de nmap, evitando argument injection (`--script=vuln`, `-oN /ruta/archivo`) si el valor llega manipulado.
 
 ---
 
@@ -148,6 +158,9 @@ python3 -m cybersec scan --verbose --adapter vertex --model gemini-2.5-pro \
 
 # Guardar trace JSONL para diagnóstico
 python3 -m cybersec scan --trace-dir /tmp/cybersec-traces --host 192.168.1.10
+
+# Fase 2a: generar propuestas de parche además del diagnóstico
+python3 -m cybersec scan --code-dir /ruta/proyecto --propose-patches --patch-dir ./patches
 ```
 
 ### Opciones del comando `scan`
@@ -167,6 +180,8 @@ python3 -m cybersec scan --trace-dir /tmp/cybersec-traces --host 192.168.1.10
 | `--verbose` | off | Muestra herramientas por iteración en lugar de barra de progreso |
 | `--trace-dir` | — | Directorio donde guardar un trace JSONL de la corrida |
 | `--exceptions-file` | — | Archivo `.md` con hallazgos aceptados a nivel de host (puertos, infra) |
+| `--propose-patches` | off | Genera propuestas de parche (Fase 2a) para hallazgos con archivo identificado. Requiere `--code-dir` |
+| `--patch-dir` | `./patches` | Directorio donde guardar los `.patch` generados (solo con `--propose-patches`) |
 
 ### Modo verbose
 
@@ -257,6 +272,39 @@ Costo estimado por modelo:
 
 Útil para comparar el costo-beneficio entre modelos antes de escalar a producción.
 
+### Fase 2a — Propuesta de parche
+
+Con `--propose-patches`, el agente genera además un diff propuesto y una explicación en lenguaje no técnico para cada hallazgo que apunte a un archivo concreto dentro de `--code-dir`. **Nunca aplica nada automáticamente** — solo propone, el humano decide si lo aplica. Aplicar el parche en sandbox, correr tests y re-escanear antes de aprobar es Fase 2b (ver Roadmap).
+
+```bash
+python3 -m cybersec scan --code-dir /ruta/proyecto --propose-patches --patch-dir ./patches
+```
+
+- Cada parche se guarda como `.patch` aplicable con `git apply <archivo>` en `--patch-dir` (default `./patches`).
+- El reporte incluye una sección `PARCHES PROPUESTOS` con el diff completo, la explicación y la ruta donde se guardó.
+- Solo reciben parche los hallazgos con un archivo identificado por el LLM y que no estén formalmente aceptados — hallazgos de red o logs quedan fuera de alcance (Fase 2 no toca infraestructura, solo código).
+- Un fallo generando el parche de un hallazgo puntual (archivo no encontrado, respuesta inválida del LLM) nunca afecta a los demás — cada propuesta es independiente.
+- Los headers de hunk (`@@ -a,b +c,d @@`) se recalculan de forma determinística a partir del cuerpo real del diff en vez de confiar en el conteo del LLM, que se equivoca con frecuencia en hunks largos — antes de este fix, alrededor de la mitad de los parches generados eran rechazados por `git apply` (`corrupt patch`) pese a que el contenido del cambio era correcto.
+
+```
+PARCHES PROPUESTOS
+----------------------------------------
+  [F001] Almacenamiento de contraseñas en texto plano durante el registro
+  Archivo: core/tenant_management/services/auth_service.py
+  Guardado en: patches/F001-almacenamiento-de-contrase-as-en-texto-p.patch
+
+  Explicación: Se modificó el proceso de registro para que la contraseña
+  se encripte de forma segura (hash) antes de guardarse...
+
+  --- a/core/tenant_management/services/auth_service.py
+  +++ b/core/tenant_management/services/auth_service.py
+  @@ -40,7 +41,7 @@
+  -                'password': password,
+  +                'password': make_password(password),
+```
+
+Validado contra proyectos reales: los parches generados aplican limpio con `git apply --check`. La validación automática de que el parche resuelve el hallazgo (tests + re-scan) es explícitamente Fase 2b — Fase 2a solo propone.
+
 ### Formato del reporte
 
 ```
@@ -291,7 +339,7 @@ source venv/bin/activate
 pytest -v
 ```
 
-155 tests cubriendo domain, tools, adapters, agent loop, pre-fetch y reporte.
+223 tests cubriendo domain, tools, adapters, agent loop, pre-fetch, reporte y generación de parches (Fase 2a).
 
 ---
 
@@ -330,7 +378,9 @@ Apunta a cualquier servidor con endpoint `/v1/chat/completions`: vLLM propio en 
 | Fase | Estado | Descripción |
 |---|---|---|
 | **Fase 1 — Diagnóstico** | ✅ Completa | CLI que analiza y reporta vulnerabilidades reales |
-| **Fase 2 — Remediación** | Planeada | El agente propone y aplica parches con confirmación del usuario |
+| **Fase 2a — Propuesta de parche** | ✅ Completa | El agente genera un diff propuesto + explicación por hallazgo; el humano decide si lo aplica |
+| **Fase 2b — Sandbox + tests** | Planeada | Aplica el parche en un entorno aislado, corre tests y re-escanea antes de pedir aprobación |
+| **Fase 2c — Aplicación autónoma** | Planeada | Aplica el parche solo si los tests pasan, con rollback automático |
 | **Fase 3 — Monitoreo** | Planeada | Daemon 24/7 que detecta ataques en tiempo real y envía alertas |
 
 ---
@@ -339,4 +389,8 @@ Apunta a cualquier servidor con endpoint `/v1/chat/completions`: vLLM propio en 
 
 Fase 1 completa y validada en producción contra repositorios reales. El agente encuentra vulnerabilidades reales — confirmado corrigiendo los hallazgos y verificando que eran explotables: IP Spoofing vía X-Forwarded-For, IDOR sin autenticación, XXE en parseo de SVG generado por IA, Unrestricted File Upload, middlewares de rate limiting registrados en código pero no activos en `settings.py`, credenciales GCP montadas en Docker, y más.
 
-Resultados típicos: 10 hallazgos por corrida (High: 4-8), ~263K tokens con gemini-2.5-pro (~$0.37 USD/scan), 5-9 iteraciones de las 15 disponibles. 155/155 tests pasando.
+Fase 2a (propuesta de parche) completa y validada contra el mismo tipo de proyectos reales: los diffs generados aplican limpio con `git apply --check` de forma consistente, incluyendo casos no triviales como evitar doble-hasheo de contraseñas en Django (`password=None` + asignación directa del hash + `save()`, en vez de volver a hashear un valor que ya venía hasheado). Criterio de graduación a Fase 2b: métricas de precision/recall medidas contra la suite de validación, no solo que el diff aplique.
+
+El explorador corre con `temperature=0.0`/`top_k=1` por defecto (validado empíricamente: reduce la varianza de hallazgos entre corridas frente al muestreo por defecto del modelo, aunque no la elimina del todo — el techo de determinismo real de las APIs de LLM alojadas parece estar ahí).
+
+Resultados típicos: 4-10 hallazgos por corrida según el proyecto, ~220-420K tokens con gemini-3.5-flash/gemini-3.1-pro-preview (~$0.02-0.03 USD/scan), 5-9 iteraciones de las 15 disponibles. 223/223 tests pasando.
